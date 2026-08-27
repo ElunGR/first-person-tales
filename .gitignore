@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# SvelteKit
+.svelte-kit/
+build/
+vite.config.ts.timestamp-*
+
+# Runtime data (session autosave, generated images, diagnostics)
+data/
+
+# Private maintainer notes and release instructions
+docs/
+
+# Local env / secrets
+.env
+.env.*
+prompts.local.yaml
+
+# Logs
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
