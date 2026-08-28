@@ -41,6 +41,43 @@ Open **Character** in the top bar to view and edit the active character. Your ch
 
 > **Keep one character per story.** The narrator reads the same character sheet on every turn, so changing the character's name mid-story can make the narrator contradict scenes you have already played. Create or switch characters before starting a new game.
 
+Always keep the `# PC (Player character)` heading. It identifies the described character as the player-controlled protagonist whose actions and perspective anchor the story.
+
+As an unofficial power-user trick, the current prompt format also allows a `# World Description` section below the character. For example:
+
+```markdown
+# World Description
+
+A world of swords and magic where four countries fight for control of the continent.
+
+## Locations
+
+### Lake
+
+A deep mountain lake surrounding the ruins of an ancient observatory.
+
+### Castle
+
+A fortified royal residence overlooking the northern trade road.
+
+## Characters
+
+### Alan
+
+A wandering swordsman searching for his missing brother.
+
+### Morgana
+
+A court mage whose loyalties are deliberately unclear.
+
+## Rules
+
+- Magic is rare and used only by trained mages.
+- Crossing a national border without permission is a serious crime.
+```
+
+This works because the entire Character editor is included in narrator, summary, and image-prompt preparation requests. It is not a dedicated world editor or an automatically tracked world state—just a useful consequence of the current architecture. Keep world notes concise because they use context on every relevant request.
+
 ### Connect Venice and begin
 
 1. Open **Settings**.

@@ -26,12 +26,11 @@ edit, and correct.
    purpose. If a connection drops in the middle of a paid request, the game
    reports the uncertainty instead of retrying and possibly billing twice.
 
-4. **Local-first.** Your story, settings, images, and optional plaintext
-   credential file live in `data/` on your own machine (Git-ignored), and you
-   can export or import a JSON save without exporting the credential. Local
-   files are transparent and portable, not a substitute for an OS password
-   vault. The game is meant for one player on their own computer, never
-   exposed to a network.
+4. **Local-first.** Your story, settings, and images live in `data/` on your
+   own machine (Git-ignored), and you can export or import a JSON save without
+   exporting the credential. The API key lives in the current user's native OS
+   keychain, or comes from `VENICE_API_KEY`. The game is meant for one player
+   on their own computer, never exposed to a network.
 
 5. **The player keeps the steering wheel.** Out-of-character `[OOC: ...]`
    notes tell the narrator how to steer the scene. The prompts are plain text
@@ -39,5 +38,5 @@ edit, and correct.
    ignored local override rather than inside the shared prompts.
 
 6. **One active character at a time.** A single character sheet accompanies
-   every narrator and summary request, so the story stays continuous. Change
-   the character before a new story, not mid-story.
+   narrator, summary, and image-prompt preparation requests. Change the
+   character before a new story, not mid-story.
