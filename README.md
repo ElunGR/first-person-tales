@@ -90,6 +90,8 @@ This works because the entire Character editor is included in narrator, summary,
 
 If a default model is no longer available on Venice, select another model manually. The narrator model continues the story; the image model is only used when you explicitly generate a picture.
 
+See [BENCHMARKS.md](BENCHMARKS.md) for a dated technical benchmark snapshot, two separate experimental prose-judge comparisons, methodology notes, and the maintainer's play-testing observations. A high technical score means that a model followed the tested instructions and scenario logic; it does not by itself mean that the model writes the best story.
+
 Advanced users may set `VENICE_API_KEY` before starting the game instead. An environment key has priority over the system keychain and is read-only in Settings.
 
 For example:
