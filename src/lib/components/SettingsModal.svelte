@@ -46,7 +46,7 @@
 	let topP = $state(0.95);
 	let frequencyPenalty = $state(0.35);
 	let presencePenalty = $state(0);
-	let maxTokens = $state(1500);
+	let maxTokens = $state(8000);
 	let translationLanguage = $state<TranslationLanguage>(DEFAULT_TRANSLATION_LANGUAGE);
 
 	// Sync form fields whenever settings/catalogs change or the modal opens.

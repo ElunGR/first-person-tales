@@ -53,6 +53,7 @@ describe('settings recovery', () => {
 		const settings = loadSettings();
 		expect(settings.active_provider).toBe('venice');
 		expect(settings.narrator_temperature).toBeCloseTo(0.75);
+		expect(settings.narrator_max_tokens).toBe(8000);
 		expect(settings.translation_language).toBe('Russian');
 		expect(providerSettings(settings).text_model).toBe('aion-labs-aion-3-0');
 		expect(providerSettings(settings).image_model).toBe('krea-2-turbo');

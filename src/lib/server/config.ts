@@ -34,6 +34,6 @@ export const MAX_IMAGE_RESPONSE_BYTES: number = 20 * 1024 * 1024;
 export const NARRATOR_TEMPERATURE: number = 0.75;
 export const NARRATOR_FREQUENCY_PENALTY: number = 0.35;
 export const NARRATOR_PRESENCE_PENALTY: number = 0.0;
-export const NARRATOR_MAX_COMPLETION_TOKENS: number = 1500;
+export const NARRATOR_MAX_COMPLETION_TOKENS: number = 8000;
 export const NARRATOR_TOP_P: number = 0.95;
 export const UTILITY_TEMPERATURE: number = 0.3;

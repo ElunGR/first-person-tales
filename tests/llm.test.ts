@@ -65,7 +65,7 @@ describe('LLMClient', () => {
 			temperature: 0.75,
 			frequencyPenalty: 0.35,
 			presencePenalty: 0,
-			maxCompletionTokens: 1500,
+			maxCompletionTokens: 8000,
 			topP: 0.95
 		});
 
@@ -73,7 +73,7 @@ describe('LLMClient', () => {
 		expect(payload.temperature).toBe(0.75);
 		expect(payload.frequency_penalty).toBe(0.35);
 		expect(payload.presence_penalty).toBe(0);
-		expect(payload.max_completion_tokens).toBe(1500);
+		expect(payload.max_completion_tokens).toBe(8000);
 		expect(payload.top_p).toBe(0.95);
 	});
 
