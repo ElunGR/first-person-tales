@@ -4,6 +4,10 @@ A local, single-player AI roleplaying game powered by [Venice.ai](https://venice
 
 ![First Person Tales gameplay](assets/screenshot.png)
 
+## Project status
+
+Project is finished no more updates are planned.
+
 ## For players
 
 ### What you need

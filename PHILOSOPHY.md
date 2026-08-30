@@ -1,42 +1,19 @@
 # Philosophy
 
-First Person Tales is built around one idea: **the player should see and
-control the whole story, and the game should never do more than the player
-asked for.**
+First Person Tales is a deliberately simple text role-playing client powered by an LLM. Its purpose is to make interactive storytelling approachable, flexible, and controlled by the player.
 
-A single turn is a single narrator call. There is no hidden memory update, no
-background summarization, no silent retry that could charge twice. What you
-see is what the narrator saw; what the narrator saw is what you can still see,
-edit, and correct.
+## Main principles
 
-## Principles
+- **Full control:** The player controls the story. There is no hidden lore, hidden memory, hidden rules, or hidden actions.
 
-1. **One call per turn.** Sending a turn makes exactly one narrator request.
-   Summaries, translations, improvements, and images happen only when you
-   explicitly trigger them. The game never summarises your history, drops
-   context, generates an image, or repeats an uncertain paid request on its
-   own.
+- **A story built from the player’s imagination:** Every story begins with the player’s input. The narrator responds to whatever the player brings into the scene—even strange or unexpected ideas—and together they build the story.
 
-2. **The story is visible and editable.** The full history stays on screen.
-   You can edit a past turn, regenerate a reply, resend from a point, or
-   delete everything after a message. Nothing is locked away where you cannot
-   see or fix it.
+- **Direct prompting:** The client uses simple prompts for each LLM role: “You are the narrator. Tell the story.” “You are the translator. Translate the text.” It does not use complex orchestration, dynamic memory, keyword-triggered cards, or other hidden layers of LLM management.
 
-3. **No surprise costs.** Every request that reaches Venice is one you made on
-   purpose. If a connection drops in the middle of a paid request, the game
-   reports the uncertainty instead of retrying and possibly billing twice.
+- **A common language:** English is the default language because it is widely supported by both players and language models.
 
-4. **Local-first.** Your story, settings, and images live in `data/` on your
-   own machine (Git-ignored), and you can export or import a JSON save without
-   exporting the credential. The API key lives in the current user's native OS
-   keychain, or comes from `VENICE_API_KEY`. The game is meant for one player
-   on their own computer, never exposed to a network.
+- **Useful tools:** The client includes practical features such as translation, image generation, regeneration, editing, and summaries. These tools exist to make the experience more comfortable without taking control away from the player.
 
-5. **The player keeps the steering wheel.** Out-of-character `[OOC: ...]`
-   notes tell the narrator how to steer the scene. The prompts are plain text
-   files you can read and edit, and your personal character lives in an
-   ignored local override rather than inside the shared prompts.
+- **A minimal interface:** First Person Tales prioritizes a simple, approachable interface over a feature-heavy one. It may not be perfect, but it aims to remain modern and easy to use.
 
-6. **One active character at a time.** A single character sheet accompanies
-   narrator, summary, and image-prompt preparation requests. Change the
-   character before a new story, not mid-story.
+- **Intentional limitations:** This client is not intended to be everything for everyone. It provides a focused baseline experience for people interested in this kind of game.
