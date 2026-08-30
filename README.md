@@ -90,8 +90,6 @@ This works because the entire Character editor is included in narrator, summary,
 
 If a default model is no longer available on Venice, select another model manually. The narrator model continues the story; the image model is only used when you explicitly generate a picture.
 
-See [BENCHMARKS.md](BENCHMARKS.md) for a dated technical benchmark snapshot, two separate experimental prose-judge comparisons, methodology notes, and the maintainer's play-testing observations. A high technical score means that a model followed the tested instructions and scenario logic; it does not by itself mean that the model writes the best story.
-
 Advanced users may set `VENICE_API_KEY` before starting the game instead. An environment key has priority over the system keychain and is read-only in Settings.
 
 For example:
@@ -141,6 +139,7 @@ The game is intended for one player on your own computer. Do not expose it to yo
 - **The API key cannot be saved:** make sure the current user's system credential manager is available and unlocked. On Linux without a desktop keychain, use `VENICE_API_KEY`. If Settings reports an older encrypted key, enter the key again.
 - **A request fails with HTTP 401 or 402:** check your API key and available Venice API credits.
 - **A story is missing after moving the project:** import a previously exported JSON save or restore your local `data/` directory.
+- **A very large story becomes slow or can no longer be imported:** the complete visible history is kept in one local save, so an extremely large file may eventually exceed browser or import limits. Export the story first. If the story continued after its latest summary, summarize it again, then copy the newest `# Story Summary`, start a new game, paste that summary as the first message, and continue playing from it.
 
 ## For developers
 

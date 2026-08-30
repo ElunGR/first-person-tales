@@ -17,7 +17,6 @@ narrator: |
   # Your narration
   - Language: English
   - Narration: Third-person
-  - Response length: 1000–1600 characters, counting only the narrative body (header and [OOC: ...] block excluded)
   - Response header: begin every response with `[Day of the week | Date | Time | Location]`
   - Response footer: end with an open-ended prompt that invites the player’s next move
   - Time continuity: roughly gauge time; advance exactly when player states a skip; months = 28 days
