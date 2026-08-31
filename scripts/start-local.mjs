@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 // The application is intentionally local-only. Do not inherit a HOST value
 // that could expose the unauthenticated single-user server to the network.
 process.env.HOST = '127.0.0.1';
+// Keep adapter-node's pre-route cap aligned with the application's 4 MiB import cap.
+process.env.BODY_SIZE_LIMIT = '4M';
 
 const serverEntry = new URL('../build/index.js', import.meta.url);
 

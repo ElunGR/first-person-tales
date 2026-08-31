@@ -186,6 +186,8 @@ export function modelRows(payload: unknown, provider: ProviderName, kind: string
 			row['heights'] = strings(constraints['heights']);
 			row['default_width'] = orValue(constraints['defaultWidth'], constraints['width']) ?? null;
 			row['default_height'] = orValue(constraints['defaultHeight'], constraints['height']) ?? null;
+			row['width_height_divisor'] =
+				orValue(constraints['widthHeightDivisor'], constraints['width_height_divisor']) ?? null;
 			const qualities = strings(
 				orValue(orValue(constraints['qualityOptions'], constraints['quality_options']), constraints['qualities'])
 			);

@@ -23,7 +23,15 @@ function configureImageModel(model = 'flux-dev'): void {
 	saveSettings(settings);
 }
 
-function catalogResponse(modelId: string): unknown {
+function catalogResponse(
+	modelId: string,
+	constraints: Record<string, unknown> = {
+		resolutions: ['512x512', '720x1280'],
+		defaultResolution: '720x1280',
+		aspectRatios: ['16:9', '1:1'],
+		defaultAspectRatio: '16:9'
+	}
+): unknown {
 	return {
 		data: [
 			{
@@ -31,12 +39,7 @@ function catalogResponse(modelId: string): unknown {
 				name: modelId,
 				model_spec: {
 					type: 'image',
-					constraints: {
-						resolutions: ['512x512', '720x1280'],
-						defaultResolution: '720x1280',
-						aspectRatios: ['16:9', '1:1'],
-						defaultAspectRatio: '16:9'
-					}
+					constraints
 				}
 			}
 		]
@@ -82,7 +85,112 @@ describe('generateToFile', () => {
 		expect(body.format).toBe('png');
 		expect(body.resolution).toBe('720x1280');
 		expect(body.aspect_ratio).toBe('16:9');
+		expect(body.width).toBeUndefined();
+		expect(body.height).toBeUndefined();
 		expect(body.hide_watermark).toBe(true);
+	});
+
+	it('rejects a prompt over the selected model limit before the paid request', async () => {
+		configureImageModel();
+		const fetchMock = vi.fn(async (url: string) => {
+			if (String(url).includes('/models')) {
+				return new Response(
+					JSON.stringify(catalogResponse('flux-dev', { promptCharacterLimit: 5 })),
+					{ status: 200 }
+				);
+			}
+			return new Response(JSON.stringify({ images: [PNG_B64] }), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		await expect(generateToFile('six!!!')).rejects.toThrow(
+			'image prompt exceeds the selected model limit of 5 characters'
+		);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('uses and validates pixel sizing without relying on a non-contract sizingType field', async () => {
+		configureImageModel();
+		const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+			if (String(url).includes('/models')) {
+				return new Response(
+					JSON.stringify(
+						catalogResponse('flux-dev', {
+							defaultWidth: 1024,
+							defaultHeight: 768,
+							widthHeightDivisor: 64
+						})
+					),
+					{ status: 200 }
+				);
+			}
+			return new Response(JSON.stringify({ images: [PNG_B64] }), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		await generateToFile('a cat');
+
+		const generateCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/image/generate'));
+		const body = JSON.parse(generateCall![1].body as string);
+		expect(body.width).toBe(1024);
+		expect(body.height).toBe(768);
+		expect(body.aspect_ratio).toBeUndefined();
+		expect(body.resolution).toBeUndefined();
+	});
+
+	it('does not mix pixel fields into a resolution-based request', async () => {
+		configureImageModel();
+		const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+			if (String(url).includes('/models')) {
+				return new Response(
+					JSON.stringify(
+						catalogResponse('flux-dev', {
+							resolutions: ['1K', '2K'],
+							defaultResolution: '1K',
+							defaultWidth: 1024,
+							defaultHeight: 1024,
+							widthHeightDivisor: 64
+						})
+					),
+					{ status: 200 }
+				);
+			}
+			return new Response(JSON.stringify({ images: [PNG_B64] }), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		await generateToFile('a cat');
+
+		const generateCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/image/generate'));
+		const body = JSON.parse(generateCall![1].body as string);
+		expect(body.resolution).toBe('1K');
+		expect(body.width).toBeUndefined();
+		expect(body.height).toBeUndefined();
+	});
+
+	it('rejects pixel dimensions that violate the selected model divisor before the paid request', async () => {
+		configureImageModel();
+		const fetchMock = vi.fn(async (url: string) => {
+			if (String(url).includes('/models')) {
+				return new Response(
+					JSON.stringify(
+						catalogResponse('flux-dev', {
+							defaultWidth: 1000,
+							defaultHeight: 768,
+							widthHeightDivisor: 64
+						})
+					),
+					{ status: 200 }
+				);
+			}
+			return new Response(JSON.stringify({ images: [PNG_B64] }), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		await expect(generateToFile('a cat')).rejects.toThrow(
+			'selected image model dimensions must be divisible by 64'
+		);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	it('maps provider HTTP errors', async () => {

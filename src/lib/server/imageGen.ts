@@ -80,6 +80,12 @@ async function requestImageViaVenice(
 		format: 'png'
 	};
 	const caps = capabilities ?? {};
+	const promptCharacterLimit = positiveInt(caps['prompt_character_limit']);
+	if (promptCharacterLimit !== null && prompt.length > promptCharacterLimit) {
+		throw new ImageGenError(
+			`image prompt exceeds the selected model limit of ${promptCharacterLimit} characters`
+		);
+	}
 	const resolutions = (caps['resolutions'] as string[] | undefined) ?? [];
 	const aspectRatios = (caps['aspect_ratios'] as string[] | undefined) ?? [];
 	if (resolutions.length > 0) {
@@ -88,12 +94,16 @@ async function requestImageViaVenice(
 	if (aspectRatios.length > 0) {
 		const preferred = String(caps['default_aspect_ratio'] || '');
 		body['aspect_ratio'] = aspectRatios.includes(preferred) ? preferred : aspectRatios[0];
-	}
-	const sizingType = String(caps['sizing_type'] || '').toLowerCase();
-	if (['pixel', 'pixels', 'width_height', 'width-height'].includes(sizingType)) {
+	} else if (resolutions.length === 0) {
 		const width = positiveInt(caps['default_width']);
 		const height = positiveInt(caps['default_height']);
 		if (width !== null && height !== null) {
+			const divisor = positiveInt(caps['width_height_divisor']);
+			if (divisor !== null && (width % divisor !== 0 || height % divisor !== 0)) {
+				throw new ImageGenError(
+					`selected image model dimensions must be divisible by ${divisor}`
+				);
+			}
 			body['width'] = width;
 			body['height'] = height;
 		}

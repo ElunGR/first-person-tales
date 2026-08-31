@@ -141,6 +141,7 @@ The game is intended for one player on your own computer. Do not expose it to yo
 - **npm shows funding, deprecation, or low-severity audit notices:** these are warnings, not installation failures. If installation finishes successfully, continue with `npm start`. Do not run `npm audit fix --force`.
 - **No narrator models appear:** enter your API key, click **Refresh models**, and check that Venice API access is enabled.
 - **The API key cannot be saved:** make sure the current user's system credential manager is available and unlocked. On Linux without a desktop keychain, use `VENICE_API_KEY`. If Settings reports an older encrypted key, enter the key again.
+- **A saved key stops working after running tests:** older image tests could overwrite the real key with a test value or delete it. Update the code, rebuild with `npm run build`, restart the app, and enter your key once more. Tests now use an isolated in-memory credential store and cannot access the native keychain.
 - **A request fails with HTTP 401 or 402:** check your API key and available Venice API credits.
 - **A story is missing after moving the project:** import a previously exported JSON save or restore your local `data/` directory.
 - **A very large story becomes slow or can no longer be imported:** the complete visible history is kept in one local save, so an extremely large file may eventually exceed browser or import limits. Export the story first. If the story continued after its latest summary, summarize it again, then copy the newest `# Story Summary`, start a new game, paste that summary as the first message, and continue playing from it.
@@ -165,7 +166,7 @@ npm run check
 npm run build
 ```
 
-- `npm test` runs automated tests using provider stubs; it does not make paid Venice API requests.
+- `npm test` runs automated tests using provider stubs and isolated in-memory credentials; it does not access your native keychain or make paid Venice API requests.
 - `npm run check` validates Svelte and TypeScript.
 - `npm run build` rebuilds the version launched by `npm start` after changing the source code.
 

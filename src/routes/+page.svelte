@@ -45,7 +45,7 @@
 
 <TopBar
 	busy={game.busy}
-	onSettings={() => (game.settingsOpen = true)}
+	onSettings={() => game.openSettings()}
 	onCharacter={() => game.openCharacter()}
 	onNewGame={() => game.newGame()}
 	onExportJson={() => game.downloadHistory('json').catch((err) => toast((err as Error).message, 'err'))}

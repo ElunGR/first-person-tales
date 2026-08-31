@@ -104,6 +104,21 @@ export class GamePageController {
 		this.settings = await api<SettingsPayload>('/settings');
 	}
 
+	async openSettings(): Promise<void> {
+		if (this.busy) return;
+		this.setBusy(true, 'Loading settings…');
+		this.settings = null;
+		try {
+			await this.loadSettings();
+			this.settingsOpen = true;
+		} catch (err) {
+			this.settingsOpen = false;
+			toast(`Could not load settings: ${(err as Error).message}`, 'err');
+		} finally {
+			this.setBusy(false);
+		}
+	}
+
 	private async applyEmbeddedState(result: StoryResultPayload | null): Promise<void> {
 		if (result?.state) this.applyState(result.state);
 		else await this.loadState();
