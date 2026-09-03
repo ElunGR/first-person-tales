@@ -16,6 +16,8 @@ const PNG_BYTES = Buffer.concat([
 	Buffer.from('fake-png-body')
 ]);
 const PNG_B64 = PNG_BYTES.toString('base64');
+const JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('fake-jpeg-body')]);
+const JPEG_B64 = JPEG_BYTES.toString('base64');
 
 function configureImageModel(model = 'flux-dev'): void {
 	const settings = defaultSettings();
@@ -88,6 +90,22 @@ describe('generateToFile', () => {
 		expect(body.width).toBeUndefined();
 		expect(body.height).toBeUndefined();
 		expect(body.hide_watermark).toBe(true);
+	});
+
+	it('accepts a JPEG returned by a model that ignores the requested PNG format', async () => {
+		configureImageModel('seedream-v5-pro');
+		const fetchMock = vi.fn(async (url: string) => {
+			if (String(url).includes('/models')) {
+				return new Response(JSON.stringify(catalogResponse('seedream-v5-pro')), { status: 200 });
+			}
+			return new Response(JSON.stringify({ images: [JPEG_B64] }), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		const name = await generateToFile('a cat');
+
+		expect(name).toMatch(/\.jpg$/);
+		expect(fs.readFileSync(path.join(imagesDir(), name)).equals(JPEG_BYTES)).toBe(true);
 	});
 
 	it('rejects a prompt over the selected model limit before the paid request', async () => {
@@ -232,11 +250,27 @@ describe('generateToFile', () => {
 });
 
 describe('saveImageBytes', () => {
-	it('sanitizes filenames and enforces PNG signature', () => {
+	it('sanitizes filenames and enforces a supported image signature', () => {
 		const name = saveImageBytes(PNG_BYTES, '.png', 'weird/../name');
 		expect(path.basename(name)).toBe(name);
 		expect(fs.existsSync(path.join(imagesDir(), name))).toBe(true);
 
-		expect(() => saveImageBytes(Buffer.from('not a png'), '.png')).toThrow(ImageGenError);
+		expect(() => saveImageBytes(Buffer.from('not an image'), '.png')).toThrow(ImageGenError);
+	});
+
+	it('uses the detected JPEG extension even when PNG was requested', () => {
+		const name = saveImageBytes(JPEG_BYTES, '.png', 'scene.png');
+		expect(name).toBe('scene.jpg');
+		expect(fs.readFileSync(path.join(imagesDir(), name)).equals(JPEG_BYTES)).toBe(true);
+	});
+
+	it('serves generated JPEG files with the matching content type', async () => {
+		const name = saveImageBytes(JPEG_BYTES, '.png');
+		const { GET } = await import('../src/routes/images/[name]/+server');
+		const response = await GET({ params: { name } } as never);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('content-type')).toBe('image/jpeg');
+		expect(Buffer.from(await response.arrayBuffer()).equals(JPEG_BYTES)).toBe(true);
 	});
 });

@@ -41,16 +41,23 @@ async function imageHeaders(): Promise<Record<string, string>> {
 
 /** Write already-decoded image bytes under data/images/. Returns file name. */
 export function saveImageBytes(raw: Buffer, ext: string, filename?: string): string {
+	let detectedExtension: string;
 	try {
-		validateImageBytes(raw);
+		detectedExtension = validateImageBytes(raw).extension;
 	} catch (exc) {
 		if (exc instanceof MediaValidationError) throw new ImageGenError(exc.message);
 		throw exc;
 	}
 	let name = filename ?? `${crypto.randomUUID().replace(/-/g, '')}${ext}`;
 	name = path.basename(name).replace(/[^A-Za-z0-9._-]/g, '_');
-	if (!path.extname(name)) {
-		name = `${name}${ext}`;
+	const suppliedExtension = path.extname(name);
+	if (!suppliedExtension) {
+		name = `${name}${detectedExtension}`;
+	} else if (
+		suppliedExtension.toLowerCase() !== detectedExtension &&
+		!(detectedExtension === '.jpg' && suppliedExtension.toLowerCase() === '.jpeg')
+	) {
+		name = `${name.slice(0, -suppliedExtension.length)}${detectedExtension}`;
 	}
 	try {
 		atomicWriteBytes(imagesDir(), name, raw);
@@ -151,13 +158,14 @@ async function requestImageViaVenice(
 	if (raw.length === 0) {
 		throw new ImageGenError('empty image data in Venice response');
 	}
+	let ext: string;
 	try {
-		validateImageBytes(raw);
+		ext = validateImageBytes(raw).extension;
 	} catch (exc) {
 		if (exc instanceof MediaValidationError) throw new ImageGenError(exc.message);
 		throw exc;
 	}
-	return { raw, ext: '.png' };
+	return { raw, ext };
 }
 
 /** Generate an image from a text prompt and save it. Returns file name. */

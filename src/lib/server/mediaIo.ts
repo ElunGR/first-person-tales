@@ -8,22 +8,38 @@ import path from 'node:path';
 import { MAX_IMAGE_RESPONSE_BYTES } from './config';
 
 export const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+export const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
+
+export interface ImageFormat {
+	extension: '.png' | '.jpg';
+	contentType: 'image/png' | 'image/jpeg';
+}
 
 export class MediaValidationError extends Error {
 	/** A provider media response is too large or not the expected format. */
 }
 
-export function validateImageBytes(raw: Buffer, contentType?: string | null): void {
+export function validateImageBytes(raw: Buffer, contentType?: string | null): ImageFormat {
 	if (raw.length > MAX_IMAGE_RESPONSE_BYTES) {
 		throw new MediaValidationError('image response exceeds the configured byte limit');
 	}
 	const normalized = (contentType || '').split(';', 1)[0].trim().toLowerCase();
-	if (normalized && normalized !== 'image/png') {
+	if (normalized && normalized !== 'image/png' && normalized !== 'image/jpeg') {
 		throw new MediaValidationError('image response has an unsupported content type');
 	}
-	if (raw.length < PNG_SIGNATURE.length || !raw.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
-		throw new MediaValidationError('image response is not a PNG file');
+	let format: ImageFormat | null = null;
+	if (raw.length >= PNG_SIGNATURE.length && raw.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+		format = { extension: '.png', contentType: 'image/png' };
+	} else if (raw.length >= JPEG_SIGNATURE.length && raw.subarray(0, JPEG_SIGNATURE.length).equals(JPEG_SIGNATURE)) {
+		format = { extension: '.jpg', contentType: 'image/jpeg' };
 	}
+	if (format === null) {
+		throw new MediaValidationError('image response is not a supported PNG or JPEG file');
+	}
+	if (normalized && normalized !== format.contentType) {
+		throw new MediaValidationError('image response content type does not match its bytes');
+	}
+	return format;
 }
 
 /** Write bytes through a same-directory temp file and atomic replace. */

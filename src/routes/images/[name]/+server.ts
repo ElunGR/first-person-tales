@@ -24,7 +24,7 @@ export const GET = apiHandler(({ params }) => {
 	// loop on multi-megabyte synchronous reads.
 	return new Response(Readable.toWeb(fs.createReadStream(filePath)) as unknown as ReadableStream, {
 		headers: {
-			'Content-Type': 'image/png',
+			'Content-Type': /\.jpe?g$/i.test(safe) ? 'image/jpeg' : 'image/png',
 			'Content-Length': String(stats.size),
 			'Cache-Control': 'public, max-age=31536000, immutable'
 		}

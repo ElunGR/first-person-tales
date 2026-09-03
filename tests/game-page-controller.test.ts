@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GamePageController } from '../src/lib/frontend/gamePage.svelte';
-import { toastState } from '../src/lib/frontend/toast.svelte';
+import { ERROR_DURATION_MS, toast, toastState } from '../src/lib/frontend/toast.svelte';
 import type { SettingsPayload, StatePayload } from '../src/lib/frontend/types';
 
 const EMPTY_STATE: StatePayload = {
@@ -31,6 +31,19 @@ function response(data: unknown): Response {
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
+});
+
+describe('toast visibility', () => {
+	it('keeps errors visible long enough to read', () => {
+		vi.useFakeTimers();
+
+		toast('Could not create image', 'err');
+		vi.advanceTimersByTime(6500);
+		expect(toastState.visible).toBe(true);
+
+		vi.advanceTimersByTime(ERROR_DURATION_MS - 6500);
+		expect(toastState.visible).toBe(false);
+	});
 });
 
 describe('GamePageController settings status', () => {
