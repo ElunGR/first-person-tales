@@ -3,6 +3,7 @@
 		busy,
 		onSettings,
 		onCharacter,
+		onWorld,
 		onNewGame,
 		onExportJson,
 		onExportMarkdown,
@@ -11,6 +12,7 @@
 		busy: boolean;
 		onSettings: () => void;
 		onCharacter: () => void;
+		onWorld: () => void;
 		onNewGame: () => void;
 		onExportJson: () => void;
 		onExportMarkdown: () => void;
@@ -103,6 +105,7 @@
 		</div>
 		<button class="ghost" type="button" disabled={busy} onclick={onSettings}>Settings</button>
 		<button class="ghost" type="button" disabled={busy} onclick={onCharacter}>Character</button>
+		<button class="ghost" type="button" disabled={busy} onclick={onWorld}>World</button>
 		<button class="danger" type="button" disabled={busy} onclick={onNewGame}>New game</button>
 	</div>
 </header>

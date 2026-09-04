@@ -1,5 +1,5 @@
 /** Game orchestration tests with an injected fake LLM. */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LLMError, type TokenUsage } from '../src/lib/server/llm';
 import {
 	buildImageRewriteMessages,
@@ -64,7 +64,12 @@ describe('narrator context building', () => {
 		const bodies = messages.slice(1).map((m) => m.content);
 		expect(bodies.some((c) => c.includes('old turn'))).toBe(false);
 		expect(messages[0].content).toContain('NARRATOR_SYSTEM_SENTINEL');
+		expect(messages[0].content).toContain('# PC (Player character)\nCHARACTER_SENTINEL');
 		expect(messages[0].content).toContain('CHARACTER_SENTINEL');
+		expect(messages[0].content).toContain('# World Description\nWORLD_SENTINEL');
+		expect(messages[0].content.indexOf('CHARACTER_SENTINEL')).toBeLessThan(
+			messages[0].content.indexOf('WORLD_SENTINEL')
+		);
 		expect(bodies.some((c) => c.includes('# Story Summary'))).toBe(true);
 		expect(bodies.some((c) => c.includes('new turn'))).toBe(true);
 	});
@@ -84,6 +89,7 @@ describe('narrator context building', () => {
 		expect(messages[0].role).toBe('system');
 		expect(messages[0].content).toContain('SUMMARY_SYSTEM_SENTINEL');
 		expect(messages[0].content).toContain('CHARACTER_SENTINEL');
+		expect(messages[0].content).toContain('WORLD_SENTINEL');
 		expect(messages[0].content).not.toContain('NARRATOR_SYSTEM_SENTINEL');
 		expect(messages.some((message) => message.content.includes('old turn'))).toBe(false);
 		expect(messages.some((message) => message.content.includes('earlier digest'))).toBe(true);
@@ -105,6 +111,7 @@ describe('narrator context building', () => {
 
 		expect(messages[0].content).toContain('IMAGE_SYSTEM_SENTINEL');
 		expect(messages[0].content).toContain('CHARACTER_SENTINEL');
+		expect(messages[0].content).toContain('WORLD_SENTINEL');
 		expect(messages[0].content).not.toContain('NARRATOR_SYSTEM_SENTINEL');
 		expect(messages[1].content).toContain('SUBJECT: the room');
 		expect(messages[1].content).toContain('current digest');
@@ -131,6 +138,7 @@ describe('chat', () => {
 	it('rolls back the appended user message when the LLM fails', async () => {
 		const s = new Session({ messages: [newMessage({ role: 'assistant', content: 'before' })] });
 		setSession(s);
+		s.save();
 		const llm = new FakeLLM([]);
 		llm.failNext = true;
 
@@ -138,6 +146,37 @@ describe('chat', () => {
 
 		expect(s.messages.length).toBe(1);
 		expect(s.messages[0].content).toBe('before');
+		const persisted = Session.load() as Session;
+		expect(persisted.messages.map((m) => m.content)).toEqual(['before']);
+	});
+
+	it('commits the player and narrator turns together after a successful reply', async () => {
+		const s = new Session();
+		setSession(s);
+		const llm = new FakeLLM(['The door creaks.']);
+		const saveSpy = vi.spyOn(s, 'save');
+
+		await chat(s, 'I open the door', llm);
+
+		expect(saveSpy).toHaveBeenCalledTimes(1);
+		expect(s.messages.map((m) => m.content)).toEqual(['I open the door', 'The door creaks.']);
+	});
+
+	it('leaves disk unchanged when the final chat save fails', async () => {
+		const s = new Session({ messages: [newMessage({ role: 'assistant', content: 'before' })] });
+		setSession(s);
+		s.save();
+		const llm = new FakeLLM(['reply']);
+		const saveSpy = vi.spyOn(s, 'save').mockImplementation(() => {
+			throw new Error('EPERM: rename failed');
+		});
+
+		await expect(chat(s, 'doomed', llm)).rejects.toThrow('rename failed');
+
+		saveSpy.mockRestore();
+		expect(s.messages.map((m) => m.content)).toEqual(['before']);
+		const persisted = Session.load() as Session;
+		expect(persisted.messages.map((m) => m.content)).toEqual(['before']);
 	});
 });
 describe('regenerate / resend', () => {
@@ -201,6 +240,42 @@ describe('regenerate / resend', () => {
 
 		expect(s.messages.map((m) => m.content)).toEqual(['new', 'new reply']);
 	});
+
+	it('regenerate commits once after a successful reply', async () => {
+		const s = new Session({
+			messages: [
+				newMessage({ role: 'user', content: 'move' }),
+				newMessage({ role: 'assistant', content: 'stale' })
+			]
+		});
+		setSession(s);
+		s.save();
+		const llm = new FakeLLM(['fresh']);
+		const saveSpy = vi.spyOn(s, 'save');
+
+		await regenerate(s, 1, llm);
+
+		expect(saveSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it('resend does not persist a truncated turn when the LLM fails', async () => {
+		const s = new Session({
+			messages: [
+				newMessage({ role: 'user', content: 'old' }),
+				newMessage({ role: 'assistant', content: 'old reply' })
+			]
+		});
+		setSession(s);
+		s.save();
+		const llm = new FakeLLM([]);
+		llm.failNext = true;
+
+		await expect(resend(s, 0, 'new', llm)).rejects.toThrow('provider exploded');
+
+		expect(s.messages.map((m) => m.content)).toEqual(['old', 'old reply']);
+		const persisted = Session.load() as Session;
+		expect(persisted.messages.map((m) => m.content)).toEqual(['old', 'old reply']);
+	});
 });
 
 describe('summarization', () => {
@@ -213,9 +288,11 @@ describe('summarization', () => {
 		});
 		setSession(s);
 		const llm = new FakeLLM(['digest of events']);
+		const saveSpy = vi.spyOn(s, 'save');
 
 		const branch = await resummary(s, llm);
 
+		expect(saveSpy).toHaveBeenCalledTimes(1);
 		expect(branch.kind).toBe('branch');
 		expect(branch.role).toBe('user');
 		expect(s.narratorStart).toBe(s.messages.length - 1);
@@ -249,6 +326,48 @@ describe('summarization', () => {
 		expect(s.messages.map((m) => m.content)).toEqual(['a', 'b']);
 	});
 
+	it('undo summary commits once', async () => {
+		const s = new Session({
+			messages: [
+				newMessage({ role: 'user', content: 'a' }),
+				newMessage({ role: 'assistant', content: 'b' })
+			]
+		});
+		setSession(s);
+		const llm = new FakeLLM(['digest']);
+		await resummary(s, llm);
+		const saveSpy = vi.spyOn(s, 'save');
+
+		undoResummary(s);
+
+		expect(saveSpy).toHaveBeenCalledTimes(1);
+		expect(s.messages.map((m) => m.content)).toEqual(['a', 'b']);
+	});
+
+	it('a failed undo save rolls memory and disk back to the summarized state', async () => {
+		const s = new Session({
+			messages: [
+				newMessage({ role: 'user', content: 'a' }),
+				newMessage({ role: 'assistant', content: 'b' })
+			]
+		});
+		setSession(s);
+		const llm = new FakeLLM(['digest']);
+		await resummary(s, llm);
+		const saveSpy = vi.spyOn(s, 'save').mockImplementation(() => {
+			throw new Error('EPERM: rename failed');
+		});
+
+		expect(() => undoResummary(s)).toThrow('rename failed');
+
+		saveSpy.mockRestore();
+		expect(s.canUndoSummary).toBe(true);
+		expect(s.messages.at(-1)?.kind).toBe('branch');
+		const persisted = Session.load() as Session;
+		expect(persisted.canUndoSummary).toBe(true);
+		expect(persisted.messages.at(-1)?.kind).toBe('branch');
+	});
+
 	it('undo with no checkpoints raises', () => {
 		const s = new Session();
 		setSession(s);
@@ -260,6 +379,39 @@ describe('summarization', () => {
 		setSession(s);
 		const llm = new FakeLLM(['x']);
 		await expect(resummary(s, llm)).rejects.toThrow();
+	});
+
+	it('a failed save rolls memory and disk back to the pre-summary state', async () => {
+		const s = new Session({
+			messages: [
+				newMessage({ role: 'user', content: 'a' }),
+				newMessage({ role: 'assistant', content: 'b' })
+			]
+		});
+		setSession(s);
+		s.save(); // Ensure a valid pre-summary file exists on disk.
+		const llm = new FakeLLM(['digest of events', 'digest of events (retry)']);
+		const saveSpy = vi.spyOn(s, 'save').mockImplementation(() => {
+			throw new Error('EPERM: rename failed');
+		});
+
+		await expect(resummary(s, llm)).rejects.toThrow('rename failed');
+
+		saveSpy.mockRestore();
+		// Memory: no branch, no checkpoint, cursor unchanged.
+		expect(s.messages.map((m) => m.content)).toEqual(['a', 'b']);
+		expect(s.summaryCheckpoints.length).toBe(0);
+		expect(s.canUndoSummary).toBe(false);
+		expect(s.narratorStart).toBe(0);
+		// Disk: the persisted file still matches the pre-summary state.
+		const persisted = Session.load() as Session;
+		expect(persisted.messages.map((m) => m.content)).toEqual(['a', 'b']);
+		expect(persisted.narratorStart).toBe(0);
+		expect(persisted.summaryCheckpoints.length).toBe(0);
+		// The rolled-back state remains usable: a retry succeeds.
+		const branch = await resummary(s, llm);
+		expect(branch.kind).toBe('branch');
+		expect(s.summaryCheckpoints.length).toBe(1);
 	});
 });
 

@@ -6,6 +6,7 @@
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
+	import WorldModal from '$lib/components/WorldModal.svelte';
 	import { GamePageController } from '$lib/frontend/gamePage.svelte';
 	import { toast } from '$lib/frontend/toast.svelte';
 	import type { MediaRecord } from '$lib/frontend/types';
@@ -33,6 +34,7 @@
 		if (viewerOpen) closeViewer();
 		else if (game.settingsOpen) game.settingsOpen = false;
 		else if (game.characterOpen) game.characterOpen = false;
+		else if (game.worldOpen) game.worldOpen = false;
 		else if (game.mediaOpen) game.closeMedia();
 	}
 
@@ -47,6 +49,7 @@
 	busy={game.busy}
 	onSettings={() => game.openSettings()}
 	onCharacter={() => game.openCharacter()}
+	onWorld={() => game.openWorld()}
 	onNewGame={() => game.newGame()}
 	onExportJson={() => game.downloadHistory('json').catch((err) => toast((err as Error).message, 'err'))}
 	onExportMarkdown={() => game.downloadHistory('markdown').catch((err) => toast((err as Error).message, 'err'))}
@@ -101,6 +104,14 @@
 	character={game.characterText}
 	onClose={() => (game.characterOpen = false)}
 	onSave={(content) => game.saveCharacter(content)}
+/>
+
+<WorldModal
+	open={game.worldOpen}
+	busy={game.busy}
+	world={game.worldText}
+	onClose={() => (game.worldOpen = false)}
+	onSave={(content) => game.saveWorld(content)}
 />
 
 <MediaModal

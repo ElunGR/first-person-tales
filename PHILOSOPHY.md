@@ -17,3 +17,7 @@ First Person Tales is a deliberately simple text role-playing client powered by 
 - **A minimal interface:** First Person Tales prioritizes a simple, approachable interface over a feature-heavy one. It may not be perfect, but it aims to remain modern and easy to use.
 
 - **Intentional limitations:** This client is not intended to be everything for everyone. It provides a focused baseline experience for people interested in this kind of game.
+
+## Optional world building
+
+First Person Tales supports a world description for stories that benefit from an established setting, lore, locations, or rules. This is an optional aid rather than the project’s main focus: the core experience remains playing a character and building the story through what happens in the game. A story can begin and continue without a predefined world.

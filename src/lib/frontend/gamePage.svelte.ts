@@ -41,6 +41,8 @@ export class GamePageController {
 	settingsOpen = $state(false);
 	characterOpen = $state(false);
 	characterText = $state('');
+	worldOpen = $state(false);
+	worldText = $state('');
 	mediaOpen = $state(false);
 	mediaTargetIndex = $state<number | null>(null);
 	mediaPreparing = $state(false);
@@ -174,9 +176,6 @@ export class GamePageController {
 	async sendCurrent(): Promise<void> {
 		const raw = this.inputDraft.trim();
 		if (!raw || this.busy) return;
-		const previousMessageCount = this.messages.length;
-		this.inputDraft = '';
-		this.messages = [...this.messages, { role: 'user', content: raw }];
 		const controller = this.beginAbortable('Narrator is thinking…');
 		try {
 			const result = await api<StoryResultPayload>('/chat', {
@@ -185,10 +184,10 @@ export class GamePageController {
 				signal: controller.signal,
 				operationId: this.operationId
 			});
+			this.inputDraft = '';
 			await this.applyEmbeddedState(result);
 		} catch (err) {
-			const reconciled = await this.reconcileState();
-			if (!reconciled || this.messages.length <= previousMessageCount) this.inputDraft = raw;
+			await this.reconcileState();
 			if (isAbortError(err)) toast('Generation stopped', 'err');
 			else toast(`Chat failed: ${(err as Error).message}`, 'err');
 		} finally {
@@ -427,6 +426,33 @@ export class GamePageController {
 			toast('Character saved');
 		} catch (err) {
 			toast(`Could not save character: ${(err as Error).message}`, 'err');
+		} finally {
+			this.setBusy(false);
+		}
+	}
+
+	async openWorld(): Promise<void> {
+		if (this.busy) return;
+		this.worldOpen = true;
+		try {
+			const data = await api<{ content: string }>('/world');
+			this.worldText = data.content;
+		} catch (err) {
+			this.worldOpen = false;
+			toast(`Could not load world: ${(err as Error).message}`, 'err');
+		}
+	}
+
+	async saveWorld(content: string): Promise<void> {
+		if (this.busy) return;
+		this.setBusy(true, 'Saving world…');
+		try {
+			const data = await api<{ content: string }>('/world', { method: 'PUT', body: { content } });
+			this.worldText = data.content;
+			this.worldOpen = false;
+			toast(data.content ? 'World saved' : 'World description removed');
+		} catch (err) {
+			toast(`Could not save world: ${(err as Error).message}`, 'err');
 		} finally {
 			this.setBusy(false);
 		}

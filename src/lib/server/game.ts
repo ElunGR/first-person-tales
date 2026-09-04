@@ -8,13 +8,13 @@ import { UTILITY_TEMPERATURE } from './config';
 import { IndexError, ValueError } from './errors';
 import type { CompletionProvider } from './llm';
 import { newMessage, type MediaKind, type Message } from './models';
-import { formatPrompt, getPrompt } from './prompts';
+import { composeRoleplayContext, formatPrompt, getPrompt } from './prompts';
 import { cleanupUnreferencedMediaFiles, type Session } from './session';
 import { loadSettings, type AppSettings } from './settings';
 import { utcNowIso } from './time';
 
-function systemWithCharacter(promptName: string): string {
-	return `${getPrompt(promptName)}\n\n${getPrompt('player_character')}`.trim();
+function systemWithContext(promptName: string): string {
+	return `${getPrompt(promptName)}\n\n${composeRoleplayContext()}`.trim();
 }
 
 /** Active compact branch, preserving chat roles for provider requests. */
@@ -41,7 +41,7 @@ function activeBranchMessages(session: Session, endIndex?: number | null): Array
 /** Narrator rules + the single player character + the active branch. */
 export function buildNarratorMessages(session: Session): Array<Record<string, string>> {
 	return [
-		{ role: 'system', content: systemWithCharacter('narrator') },
+		{ role: 'system', content: systemWithContext('narrator') },
 		...activeBranchMessages(session)
 	];
 }
@@ -49,7 +49,7 @@ export function buildNarratorMessages(session: Session): Array<Record<string, st
 /** Summary rules + the single player character + the active branch. */
 export function buildSummaryMessages(session: Session): Array<Record<string, string>> {
 	return [
-		{ role: 'system', content: systemWithCharacter('summary_request') },
+		{ role: 'system', content: systemWithContext('summary_request') },
 		...activeBranchMessages(session),
 		{ role: 'user', content: getPrompt('summary_user_request') }
 	];
@@ -82,6 +82,8 @@ export interface StoryOperationOptions {
 /**
  * Append player message, run narrator, append assistant reply.
  * Single LLM call per turn - no hidden memory update.
+ * History is committed once after a successful reply so a failed request
+ * never leaves a player-only turn on disk.
  */
 export async function chat(
 	session: Session,
@@ -89,22 +91,20 @@ export async function chat(
 	llm: CompletionProvider,
 	options: StoryOperationOptions = {}
 ): Promise<Message> {
-	// Snapshot for explicit rollback if the LLM call fails after the user
-	// message was already appended (and autosaved).
 	const snapshot = session.snapshotTranscript();
 	try {
-		session.appendMessage(newMessage({ role: 'user', content }));
+		session.appendMessage(newMessage({ role: 'user', content }), { persist: false });
 		const reply = await llm.complete(buildNarratorMessages(session), {
 			...narratorCompletionOptions(options.temperature === undefined ? null : { temperature: options.temperature }),
 			signal: options.signal
 		});
 		recordNarratorPromptTokens(session, llm);
 		const assistant = newMessage({ role: 'assistant', content: reply.trim() });
-		session.appendMessage(assistant);
+		session.appendMessage(assistant, { persist: false });
+		session.save();
 		return assistant;
 	} catch (err) {
-		// Restore prior history and persist the rollback.
-		session.restoreTranscript(snapshot);
+		session.restoreTranscript(snapshot, { persist: false });
 		throw err;
 	}
 }
@@ -124,22 +124,21 @@ export async function regenerate(
 	if (index < 0 || index >= session.messages.length) {
 		throw new IndexError(String(index));
 	}
-	// Snapshot for explicit rollback if regenerate fails after truncate.
 	const snapshot = session.snapshotTranscript();
 	try {
-		session.truncateFrom(index, false);
+		session.truncateFrom(index, false, { persist: false });
 		const reply = await llm.complete(buildNarratorMessages(session), {
 			...narratorCompletionOptions(options.temperature === undefined ? null : { temperature: options.temperature }),
 			signal: options.signal
 		});
 		recordNarratorPromptTokens(session, llm);
 		const assistant = newMessage({ role: 'assistant', content: reply.trim() });
-		session.appendMessage(assistant);
+		session.appendMessage(assistant, { persist: false });
+		session.save();
 		cleanupUnreferencedMediaFiles(session);
 		return assistant;
 	} catch (err) {
-		// Restore prior history and persist the rollback.
-		session.restoreTranscript(snapshot);
+		session.restoreTranscript(snapshot, { persist: false });
 		throw err;
 	}
 }
@@ -178,18 +177,18 @@ export async function resend(
 		const remainingIds = new Set(session.messages.map((message) => message.id));
 		session.media = session.media.filter((item) => remainingIds.has(item.message_id));
 		session.reconcileNarratorStart();
-		session.save();
 		const reply = await llm.complete(buildNarratorMessages(session), {
 			...narratorCompletionOptions(options.temperature === undefined ? null : { temperature: options.temperature }),
 			signal: options.signal
 		});
 		recordNarratorPromptTokens(session, llm);
 		const assistant = newMessage({ role: 'assistant', content: reply.trim() });
-		session.appendMessage(assistant);
+		session.appendMessage(assistant, { persist: false });
+		session.save();
 		cleanupUnreferencedMediaFiles(session);
 		return assistant;
 	} catch (err) {
-		session.restoreTranscript(snapshot);
+		session.restoreTranscript(snapshot, { persist: false });
 		throw err;
 	}
 }
@@ -221,17 +220,25 @@ export async function resummary(
 	}
 
 	const previousStart = session.narratorStart;
-	const branch = newMessage({ role: 'user', kind: 'branch', content: digest });
-	session.appendMessage(branch);
-	session.summaryCheckpoints.push({
-		id: crypto.randomUUID(),
-		created_at: utcNowIso(),
-		previous_narrator_start: previousStart,
-		branch_message_id: branch.id
-	});
-	session.narratorStart = session.messages.length - 1;
-	session.save();
-	return branch;
+	const snapshot = session.snapshotTranscript();
+	try {
+		// Mutate in memory first, then commit once: a failed save leaves no
+		// partial branch/checkpoint mix on disk and rolls the memory back.
+		const branch = newMessage({ role: 'user', kind: 'branch', content: digest });
+		session.appendMessage(branch, { persist: false });
+		session.summaryCheckpoints.push({
+			id: crypto.randomUUID(),
+			created_at: utcNowIso(),
+			previous_narrator_start: previousStart,
+			branch_message_id: branch.id
+		});
+		session.narratorStart = session.messages.length - 1;
+		session.save();
+		return branch;
+	} catch (err) {
+		session.restoreTranscript(snapshot, { persist: false });
+		throw err;
+	}
 }
 
 /**
@@ -256,11 +263,18 @@ export function undoResummary(session: Session): Message {
 	}
 
 	const branch = session.messages[branchIdx];
-	session.truncateFrom(branchIdx);
-	session.narratorStart = checkpoint.previous_narrator_start;
-	session.reconcileNarratorStart();
-	session.save();
-	return branch;
+	const snapshot = session.snapshotTranscript();
+	try {
+		session.truncateFrom(branchIdx, false, { persist: false });
+		session.narratorStart = checkpoint.previous_narrator_start;
+		session.reconcileNarratorStart();
+		session.save();
+		cleanupUnreferencedMediaFiles(session);
+		return branch;
+	} catch (err) {
+		session.restoreTranscript(snapshot, { persist: false });
+		throw err;
+	}
 }
 
 export async function translateText(text: string, llm: CompletionProvider, signal?: AbortSignal): Promise<string> {
@@ -303,7 +317,7 @@ export function buildImageRewriteMessages(
 	subject: string
 ): Array<Record<string, string>> {
 	return [
-		{ role: 'system', content: systemWithCharacter('image_prompt_rewrite') },
+		{ role: 'system', content: systemWithContext('image_prompt_rewrite') },
 		{
 			role: 'user',
 			content: formatPrompt('image_rewrite_user', {

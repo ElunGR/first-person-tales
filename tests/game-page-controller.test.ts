@@ -121,6 +121,37 @@ describe('GamePageController settings status', () => {
 	});
 });
 
+describe('GamePageController world editor', () => {
+	it('loads the world in its own modal', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(response({ content: 'A quiet kingdom.' }));
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+
+		await controller.openWorld();
+
+		expect(fetchMock).toHaveBeenCalledWith('/world', expect.any(Object));
+		expect(controller.worldOpen).toBe(true);
+		expect(controller.worldText).toBe('A quiet kingdom.');
+	});
+
+	it('saves a blank world as an explicit removal', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(response({ content: '' }));
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+		controller.worldOpen = true;
+
+		await controller.saveWorld('   ');
+
+		expect(fetchMock).toHaveBeenCalledWith('/world', expect.objectContaining({
+			method: 'PUT',
+			body: JSON.stringify({ content: '   ' })
+		}));
+		expect(controller.worldOpen).toBe(false);
+		expect(controller.worldText).toBe('');
+		expect(toastState.message).toBe('World description removed');
+	});
+});
+
 describe('GamePageController state responses', () => {
 	it('uses embedded story state without a redundant state request', async () => {
 		const calls: string[] = [];
@@ -144,7 +175,57 @@ describe('GamePageController state responses', () => {
 
 		expect(calls).toEqual(['/chat']);
 		expect(controller.messages.map((message) => message.content)).toEqual(['go', 'reply']);
+		expect(controller.inputDraft).toBe('');
 		expect(controller.statusText).toBe('Ready');
+	});
+
+	it('keeps the draft in the composer until chat succeeds', async () => {
+		let resolveChat!: (value: Response) => void;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(() => new Promise<Response>((resolve) => {
+				resolveChat = resolve;
+			}))
+		);
+		const controller = new GamePageController();
+		controller.inputDraft = 'go';
+
+		const sending = controller.sendCurrent();
+
+		expect(controller.messages).toEqual([]);
+		expect(controller.inputDraft).toBe('go');
+		expect(controller.busy).toBe(true);
+		expect(controller.statusText).toBe('Narrator is thinking…');
+		resolveChat(
+			response({
+				message: { id: 'a', role: 'assistant', content: 'reply' },
+				state: {
+					...EMPTY_STATE,
+					messages: [
+						{ id: 'u', role: 'user', content: 'go' },
+						{ id: 'a', role: 'assistant', content: 'reply' }
+					]
+				}
+			})
+		);
+		await sending;
+
+		expect(controller.inputDraft).toBe('');
+		expect(controller.messages.map((message) => message.content)).toEqual(['go', 'reply']);
+	});
+
+	it('restores an editable draft when chat fails without adding a history card', async () => {
+		vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('provider exploded')));
+		const controller = new GamePageController();
+		controller.inputDraft = 'go';
+
+		await controller.sendCurrent();
+
+		expect(controller.messages).toEqual([]);
+		expect(controller.inputDraft).toBe('go');
+		expect(controller.busy).toBe(false);
+		expect(controller.statusText).toBe('Ready');
+		expect(toastState.message).toBe('Chat failed: provider exploded');
 	});
 
 	it('falls back to state when an older story response omits it', async () => {

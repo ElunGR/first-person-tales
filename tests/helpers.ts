@@ -43,7 +43,10 @@ export function useTempPromptRoot() {
 			path.join(state.dir, 'prompts.yaml'),
 			[
 				'narrator: NARRATOR_SYSTEM_SENTINEL',
-				'player_character: CHARACTER_SENTINEL',
+				'player_character: "# PC (Player character)\\n{player_character_description}"',
+				'world: "# World Description\\n{world_description}"',
+				'player_character_description: CHARACTER_SENTINEL',
+				'world_description: WORLD_SENTINEL',
 				'summary_request: SUMMARY_SYSTEM_SENTINEL',
 				'summary_user_request: SUMMARY_USER_SENTINEL',
 				'branch_user_wrap: "# Story Summary\\n{content}"',

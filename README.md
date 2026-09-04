@@ -41,46 +41,30 @@ Keep the terminal window open while you play. Press `Ctrl+C` when you want to st
 
 The game includes a ready-to-play character named Rowan. You can start with Rowan immediately or create your own character before your first story.
 
-Open **Character** in the top bar to view and edit the active character. Your changes are saved to a personal, Git-ignored `prompts.local.yaml` file and take effect without restarting the game.
+Open **Character** in the top bar to edit the active character's description. The system heading remains visible in the `player_character` template in `prompts.yaml`, but is not shown in the player-facing editor. Your changes are saved to a personal, Git-ignored `prompts.local.yaml` file and take effect without restarting the game.
 
 > **Keep one character per story.** The narrator reads the same character sheet on every turn, so changing the character's name mid-story can make the narrator contradict scenes you have already played. Create or switch characters before starting a new game.
 
-Always keep the `# PC (Player character)` heading. It identifies the described character as the player-controlled protagonist whose actions and perspective anchor the story.
+First-level Markdown headings (`#`) are reserved for system sections. If you enter one in a character or world description, the game saves it as a second-level heading (`##`).
 
-As an unofficial power-user trick, the current prompt format also allows a `# World Description` section below the character. For example:
+### Describe the world
 
-```markdown
-# World Description
+Open **World** in the top bar to add optional setting, lore, locations, characters, organizations, or rules. Leave the description empty and save to play without a world description.
 
-A world of swords and magic where four countries fight for control of the continent.
+The world description follows the character description in narrator, summary, and image-prompt preparation requests. Keep it concise because it uses context on every relevant request.
 
-## Locations
+### Update from the older character editor
 
-### Lake
+This version uses a safer local prompt format in which system headings cannot be edited through the GUI. If you already have a `prompts.local.yaml` created by an older version:
 
-A deep mountain lake surrounding the ruins of an ancient observatory.
+1. Stop the game.
+2. Open the old `prompts.local.yaml` and copy your character description and any world description somewhere safe.
+3. Delete the old `prompts.local.yaml`.
+4. Update the source code and run `npm run build`.
+5. Run `npm start`.
+6. Open **Character** and **World** and paste only the descriptions, without the old system headings.
 
-### Castle
-
-A fortified royal residence overlooking the northern trade road.
-
-## Characters
-
-### Alan
-
-A wandering swordsman searching for his missing brother.
-
-### Morgana
-
-A court mage whose loyalties are deliberately unclear.
-
-## Rules
-
-- Magic is rare and used only by trained mages.
-- Crossing a national border without permission is a serious crime.
-```
-
-This works because the entire Character editor is included in narrator, summary, and image-prompt preparation requests. It is not a dedicated world editor or an automatically tracked world state—just a useful consequence of the current architecture. Keep world notes concise because they use context on every relevant request.
+The game does not modify files that still use the old `player_character` key. It reports the required update steps instead.
 
 ### Connect Venice and begin
 
@@ -115,6 +99,7 @@ Use `[OOC: ...]` when you want to give the narrator instructions outside your ch
 - **Improve** rewrites your draft before you send it.
 - **Translate** translates a message into the language selected in Settings.
 - **Character** edits the active player character (see [Choose your character](#choose-your-character)).
+- **World** edits the optional world description (see [Describe the world](#describe-the-world)).
 - **Summarize context** condenses the active story context; **Undo summary** restores the previous state. Both sit beside the latest-request token counter. Undo asks first if it would also remove newer turns.
 - **Image** prepares an editable scene prompt and generates an image only after you confirm it.
 - **Export / Import** saves or restores your story. Imports create a backup first.

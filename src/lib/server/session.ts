@@ -157,15 +157,17 @@ export class Session {
 		};
 	}
 
-	/** Restore a prior snapshotTranscript() result and persist. */
-	restoreTranscript(snapshot: TranscriptSnapshot): void {
+	/** Restore a prior snapshotTranscript() result. Persist unless disk was never changed. */
+	restoreTranscript(snapshot: TranscriptSnapshot, options: { persist?: boolean } = {}): void {
 		this.messages = [...snapshot.messages];
 		this.media = [...snapshot.media];
 		this.narratorStart = snapshot.narratorStart;
 		this.summaryCheckpoints = [...snapshot.summaryCheckpoints];
 		this.lastNarratorPromptTokens = snapshot.lastNarratorPromptTokens;
 		this.reconcileNarratorStart();
-		this.save();
+		if (options.persist !== false) {
+			this.save();
+		}
 	}
 
 	/** Atomically write session state to data/session.json. */
@@ -210,9 +212,11 @@ export class Session {
 		}
 	}
 
-	appendMessage(message: Message): Message {
+	appendMessage(message: Message, options: { persist?: boolean } = {}): Message {
 		this.messages.push(message);
-		this.save();
+		if (options.persist !== false) {
+			this.save();
+		}
 		return message;
 	}
 
@@ -231,7 +235,7 @@ export class Session {
 	}
 
 	/** Delete the message at `index` and everything after it. */
-	truncateFrom(index: number, cleanupFiles = true): void {
+	truncateFrom(index: number, cleanupFiles = true, options: { persist?: boolean } = {}): void {
 		if (index < 0 || index >= this.messages.length) {
 			throw new RangeError(String(index));
 		}
@@ -240,7 +244,9 @@ export class Session {
 		this.messages = this.messages.slice(0, index);
 		this.media = this.media.filter((item) => !removedIds.has(item.message_id));
 		this.reconcileNarratorStart();
-		this.save();
+		if (options.persist !== false) {
+			this.save();
+		}
 		if (cleanupFiles) {
 			this.deleteMediaFiles(removedMedia);
 		}

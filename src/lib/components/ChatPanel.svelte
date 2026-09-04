@@ -142,7 +142,12 @@
 				placeholder="First-person action… [OOC: ...] for out-of-character requests."
 				rows="3"
 				bind:value={inputDraft}
+				readonly={busy}
 				onkeydown={(event) => {
+					if (busy) {
+						event.preventDefault();
+						return;
+					}
 					if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
 						event.preventDefault();
 						onSend();

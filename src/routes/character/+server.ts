@@ -1,7 +1,10 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { apiHandler, parseBody } from '$lib/server/api';
-import { getPrompt, savePlayerCharacter } from '$lib/server/prompts';
+import {
+	getPlayerCharacterDescription,
+	savePlayerCharacterDescription
+} from '$lib/server/prompts';
 
 const CharacterUpdateSchema = z.strictObject({
 	content: z
@@ -10,14 +13,13 @@ const CharacterUpdateSchema = z.strictObject({
 		.refine((value) => value.trim().length > 0, 'Character must not be empty')
 });
 
-/** Return the active player character (prompts.yaml merged with the local override). */
+/** Return only the editable character description; the system heading stays server-owned. */
 export const GET = apiHandler(async () => {
-	return json({ content: getPrompt('player_character') });
+	return json({ content: getPlayerCharacterDescription() });
 });
 
-/** Persist the player character to prompts.local.yaml (Git-ignored override). */
+/** Persist only the editable character description. */
 export const PUT = apiHandler(async ({ request }) => {
 	const body = await parseBody(request, CharacterUpdateSchema);
-	savePlayerCharacter(body.content);
-	return json({ content: body.content });
+	return json({ content: savePlayerCharacterDescription(body.content) });
 });

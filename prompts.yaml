@@ -34,12 +34,22 @@ narrator: |
 
 player_character: |
   # PC (Player character)
+  {player_character_description}
+
+world: |
+  # World Description
+  {world_description}
+
+# Default editable descriptions. prompts.local.yaml may override only these values.
+player_character_description: |
   - Name: Rowan
   - Age: 24
   - Appearance: Practical travel-worn clothes, a weathered satchel, and observant eyes.
   - Background: An ordinary traveler standing at the beginning of an unfamiliar journey.
   - Personality: Curious, cautious, and quietly determined.
   - Skills: Resourceful and attentive, with no exceptional powers.
+
+world_description: ""
 
 translate: |
   Translate English RPG text into natural {translation_language}. Output ONLY the translation.

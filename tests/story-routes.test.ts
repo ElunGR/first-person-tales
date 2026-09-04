@@ -112,13 +112,75 @@ describe('character route validation', () => {
 		const request = new Request('http://localhost/character', {
 			method: 'PUT',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ content: 'A careful explorer.' })
+			body: JSON.stringify({ content: 'A careful explorer.\n# Skills' })
 		});
 
 		const response = await PUT({ request } as never);
 		expect(response.status).toBe(200);
+		expect(await jsonResponse(response)).toEqual({ content: 'A careful explorer.\n## Skills' });
 		expect(fs.readFileSync(path.join(promptRoot.dir(), 'prompts.local.yaml'), 'utf8')).toContain(
-			'A careful explorer.'
+			'player_character_description'
 		);
+	});
+});
+
+describe('world route validation', () => {
+	it('rejects a world longer than 10,000 characters', async () => {
+		const { PUT } = await import('../src/routes/world/+server');
+		const request = new Request('http://localhost/world', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ content: 'x'.repeat(10001) })
+		});
+
+		const response = await PUT({ request } as never);
+		expect(response.status).toBe(422);
+	});
+
+	it('normalizes and persists a world without losing the character', async () => {
+		const { PUT: putCharacter } = await import('../src/routes/character/+server');
+		await putCharacter({
+			request: new Request('http://localhost/character', {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ content: 'A careful explorer.' })
+			})
+		} as never);
+		const { PUT } = await import('../src/routes/world/+server');
+		const response = await PUT({
+			request: new Request('http://localhost/world', {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ content: 'A kingdom.\n# Rules' })
+			})
+		} as never);
+
+		expect(response.status).toBe(200);
+		expect(await jsonResponse(response)).toEqual({ content: 'A kingdom.\n## Rules' });
+		const saved = fs.readFileSync(path.join(promptRoot.dir(), 'prompts.local.yaml'), 'utf8');
+		expect(saved).toContain('player_character_description');
+		expect(saved).toContain('world_description');
+	});
+
+	it('accepts a blank world and removes it from local prompts', async () => {
+		const { PUT } = await import('../src/routes/world/+server');
+		await PUT({
+			request: new Request('http://localhost/world', {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ content: 'Temporary world' })
+			})
+		} as never);
+		const response = await PUT({
+			request: new Request('http://localhost/world', {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ content: '   ' })
+			})
+		} as never);
+
+		expect(response.status).toBe(200);
+		expect(await jsonResponse(response)).toEqual({ content: '' });
+		expect(fs.existsSync(path.join(promptRoot.dir(), 'prompts.local.yaml'))).toBe(false);
 	});
 });

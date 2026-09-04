@@ -4,13 +4,13 @@
 	let {
 		open,
 		busy,
-		character,
+		world,
 		onClose,
 		onSave
 	}: {
 		open: boolean;
 		busy: boolean;
-		character: string;
+		world: string;
 		onClose: () => void;
 		onSave: (content: string) => void;
 	} = $props();
@@ -18,18 +18,16 @@
 	let content = $state('');
 
 	$effect(() => {
-		if (open) content = character;
+		if (open) content = world;
 	});
-
-	const canSave = $derived(content.trim().length > 0 && !busy);
 </script>
 
 <ModalFrame
 	{open}
-	id="characterModal"
-	label="Player character"
-	title="Character"
-	subtitle="Avoid changing the character mid-story."
+	id="worldModal"
+	label="World description"
+	title="World"
+	subtitle="Optional. Leave empty to remove the world description from AI context."
 	{onClose}
 >
 	{#snippet children()}
@@ -48,6 +46,6 @@
 		>
 	{/snippet}
 	{#snippet footer()}
-		<button type="button" disabled={!canSave} onclick={() => onSave(content)}>Save</button>
+		<button type="button" disabled={busy} onclick={() => onSave(content)}>Save</button>
 	{/snippet}
 </ModalFrame>
