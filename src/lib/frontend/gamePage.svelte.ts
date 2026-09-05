@@ -152,7 +152,8 @@ export class GamePageController {
 		return controller;
 	}
 
-	private endAbortable(): void {
+	private endAbortable(controller: AbortController): void {
+		if (this.abortController !== controller) return;
 		this.abortController = null;
 		this.canStopCurrentOperation = false;
 		this.operationId = null;
@@ -173,6 +174,17 @@ export class GamePageController {
 		if (!this.busy) this.editingMessageId = this.messages[index]?.id ?? null;
 	}
 
+	/** How many messages a rewind from `index` would discard, `index` excluded. */
+	private messagesAfter(index: number): number {
+		if (index < 0 || index >= this.messages.length) return 0;
+		return this.messages.length - index - 1;
+	}
+
+	/** "3 messages" / "1 message"; keeps confirmation wording consistent. */
+	private countLabel(count: number): string {
+		return `${count} ${count === 1 ? 'message' : 'messages'}`;
+	}
+
 	async sendCurrent(): Promise<void> {
 		const raw = this.inputDraft.trim();
 		if (!raw || this.busy) return;
@@ -191,7 +203,7 @@ export class GamePageController {
 			if (isAbortError(err)) toast('Generation stopped', 'err');
 			else toast(`Chat failed: ${(err as Error).message}`, 'err');
 		} finally {
-			this.endAbortable();
+			this.endAbortable(controller);
 		}
 	}
 
@@ -209,11 +221,12 @@ export class GamePageController {
 			if (isAbortError(err)) toast('Improvement stopped', 'err');
 			else toast(`Could not improve text: ${(err as Error).message}`, 'err');
 		} finally {
-			this.endAbortable();
+			this.endAbortable(controller);
 		}
 	}
 
 	async saveEdit(index: number, content: string): Promise<void> {
+		if (this.busy) return;
 		this.setBusy(true, 'Saving…');
 		try {
 			const result = await api<StoryResultPayload>(`/messages/${index}`, {
@@ -230,9 +243,20 @@ export class GamePageController {
 	}
 
 	async resendEdit(index: number, content: string): Promise<void> {
+		if (this.busy) return;
 		const message = this.messages[index];
-		if (content !== message?.content && index < this.messages.length - 1) {
-			if (!confirm('Save the edit and delete all messages after this turn?')) return;
+		// Resend always rewinds the story to this turn, whether or not the text
+		// changed, so the count decides the prompt - never the edited text.
+		const discarded = this.messagesAfter(index);
+		if (discarded > 0) {
+			if (
+				!confirm(
+					`Save the edit and resend this turn? The ${this.countLabel(discarded)} after it, ` +
+						'and any attached images, will be deleted.'
+				)
+			) {
+				return;
+			}
 		}
 		const controller = this.beginAbortable('Resending turn…');
 		try {
@@ -250,12 +274,18 @@ export class GamePageController {
 			else toast(`Could not resend turn: ${(err as Error).message}`, 'err');
 			await this.reconcileState();
 		} finally {
-			this.endAbortable();
+			this.endAbortable(controller);
 		}
 	}
 
 	async deleteMessage(index: number): Promise<void> {
-		if (this.busy || !confirm('Delete this message and all following messages?')) return;
+		if (this.busy) return;
+		const following = this.messagesAfter(index);
+		const question =
+			following > 0
+				? `Delete this message and the ${this.countLabel(following)} after it?`
+				: 'Delete this message?';
+		if (!confirm(question)) return;
 		this.setBusy(true, 'Deleting…');
 		try {
 			this.applyState(await api<StatePayload>(`/messages/${index}`, {
@@ -286,11 +316,12 @@ export class GamePageController {
 			else toast(`Could not regenerate response: ${(err as Error).message}`, 'err');
 			await this.reconcileState();
 		} finally {
-			this.endAbortable();
+			this.endAbortable(controller);
 		}
 	}
 
 	async translateMessage(index: number): Promise<void> {
+		if (this.busy) return;
 		const message = this.messages[index];
 		if (!message || message.role !== 'assistant') return;
 		const controller = this.beginAbortable(`Translating message ${index + 1}…`);
@@ -307,7 +338,7 @@ export class GamePageController {
 			else toast(`Could not translate: ${(err as Error).message}`, 'err');
 			await this.reconcileState();
 		} finally {
-			this.endAbortable();
+			this.endAbortable(controller);
 		}
 	}
 
@@ -324,7 +355,7 @@ export class GamePageController {
 			else toast(`Could not summarize: ${(err as Error).message}`, 'err');
 			await this.reconcileState();
 		} finally {
-			this.endAbortable();
+			this.endAbortable(controller);
 		}
 	}
 
@@ -406,13 +437,17 @@ export class GamePageController {
 
 	async openCharacter(): Promise<void> {
 		if (this.busy) return;
-		this.characterOpen = true;
+		this.characterOpen = false;
+		this.setBusy(true, 'Loading character…');
 		try {
 			const data = await api<{ content: string }>('/character');
 			this.characterText = data.content;
+			this.characterOpen = true;
 		} catch (err) {
 			this.characterOpen = false;
 			toast(`Could not load character: ${(err as Error).message}`, 'err');
+		} finally {
+			this.setBusy(false);
 		}
 	}
 
@@ -433,13 +468,17 @@ export class GamePageController {
 
 	async openWorld(): Promise<void> {
 		if (this.busy) return;
-		this.worldOpen = true;
+		this.worldOpen = false;
+		this.setBusy(true, 'Loading world…');
 		try {
 			const data = await api<{ content: string }>('/world');
 			this.worldText = data.content;
+			this.worldOpen = true;
 		} catch (err) {
 			this.worldOpen = false;
 			toast(`Could not load world: ${(err as Error).message}`, 'err');
+		} finally {
+			this.setBusy(false);
 		}
 	}
 
@@ -493,7 +532,7 @@ export class GamePageController {
 	}
 
 	async prepareMedia(instruction: string): Promise<void> {
-		if (this.mediaTargetIndex === null || !instruction.trim()) return;
+		if (this.busy || this.mediaTargetIndex === null || !instruction.trim()) return;
 		const controller = this.beginAbortable('Preparing prompt…');
 		this.mediaPreparing = true;
 		try {
@@ -509,12 +548,12 @@ export class GamePageController {
 			else toast(`Could not prepare prompt: ${(err as Error).message}`, 'err');
 		} finally {
 			this.mediaPreparing = false;
-			this.endAbortable();
+			this.endAbortable(controller);
 		}
 	}
 
 	async generateMedia(text: string): Promise<void> {
-		if (this.mediaTargetIndex === null) return;
+		if (this.busy || this.mediaTargetIndex === null) return;
 		const targetIndex = this.mediaTargetIndex;
 		const controller = this.beginAbortable('Generating image…');
 		try {
@@ -531,7 +570,7 @@ export class GamePageController {
 			else toast(`Could not create image: ${(err as Error).message}`, 'err');
 			await this.reconcileState();
 		} finally {
-			this.endAbortable();
+			this.endAbortable(controller);
 		}
 	}
 

@@ -24,16 +24,23 @@ describe('local game launcher', () => {
 				[
 					"import { mkdirSync, writeFileSync } from 'node:fs';",
 					"mkdirSync('build', { recursive: true });",
-					'writeFileSync("build/index.js", "console.log(\\\"SERVER_HOST=\\\" + process.env.HOST); console.log(\\\"BODY_SIZE_LIMIT=\\\" + process.env.BODY_SIZE_LIMIT)");',
+					'writeFileSync("build/index.js", "console.log(\\\"SERVER_HOST=\\\" + process.env.HOST); console.log(\\\"SERVER_ORIGIN=\\\" + process.env.ORIGIN); console.log(\\\"BODY_SIZE_LIMIT=\\\" + process.env.BODY_SIZE_LIMIT)");',
 					"console.log('BUILD_COMPLETED');"
 				].join('\n')
 			);
 
+			const testEnv: NodeJS.ProcessEnv = {
+				...process.env,
+				HOST: '0.0.0.0',
+				BODY_SIZE_LIMIT: '512K',
+				PORT: '3123'
+			};
+			delete testEnv.ORIGIN;
 			const run = () =>
 				spawnSync(process.execPath, [path.join(scriptsDir, 'start-local.mjs')], {
 					cwd: projectDir,
 					encoding: 'utf8',
-					env: { ...process.env, HOST: '0.0.0.0', BODY_SIZE_LIMIT: '512K' }
+					env: testEnv
 				});
 
 			const firstLaunch = run();
@@ -41,6 +48,7 @@ describe('local game launcher', () => {
 			expect(firstLaunch.stdout).toContain('Preparing First Person Tales for first launch...');
 			expect(firstLaunch.stdout).toContain('BUILD_COMPLETED');
 			expect(firstLaunch.stdout).toContain('SERVER_HOST=127.0.0.1');
+			expect(firstLaunch.stdout).toContain('SERVER_ORIGIN=http://127.0.0.1:3123');
 			expect(firstLaunch.stdout).toContain('BODY_SIZE_LIMIT=4M');
 
 			const nextLaunch = run();
@@ -48,6 +56,7 @@ describe('local game launcher', () => {
 			expect(nextLaunch.stdout).not.toContain('Preparing First Person Tales');
 			expect(nextLaunch.stdout).not.toContain('BUILD_COMPLETED');
 			expect(nextLaunch.stdout).toContain('SERVER_HOST=127.0.0.1');
+			expect(nextLaunch.stdout).toContain('SERVER_ORIGIN=http://127.0.0.1:3123');
 			expect(nextLaunch.stdout).toContain('BODY_SIZE_LIMIT=4M');
 		} finally {
 			fs.rmSync(projectDir, { recursive: true, force: true });

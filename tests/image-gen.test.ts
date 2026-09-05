@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateToFile, ImageGenError, saveImageBytes } from '../src/lib/server/imageGen';
 import { deleteApiKey, setApiKey } from '../src/lib/server/keyring';
 import { clearModelCapabilitiesForTests } from '../src/lib/server/providerApi';
+import { unmarkMediaFilePending } from '../src/lib/server/mediaIo';
 import { imagesDir } from '../src/lib/server/paths';
+import { cleanupUnreferencedMediaFilesOnDisk } from '../src/lib/server/sessionStorage';
 import { saveSettings, defaultSettings, resetSettingsStateForTests } from '../src/lib/server/settings';
 import { useTempDataDir } from './helpers';
 
@@ -250,6 +252,16 @@ describe('generateToFile', () => {
 });
 
 describe('saveImageBytes', () => {
+	it('protects a finished image from concurrent orphan cleanup until attachment completes', () => {
+		const name = saveImageBytes(PNG_BYTES, '.png', 'pending.png');
+
+		expect(cleanupUnreferencedMediaFilesOnDisk([])).toEqual([]);
+		expect(fs.existsSync(path.join(imagesDir(), name))).toBe(true);
+
+		unmarkMediaFilePending(name);
+		expect(cleanupUnreferencedMediaFilesOnDisk([])).toEqual([name]);
+	});
+
 	it('sanitizes filenames and enforces a supported image signature', () => {
 		const name = saveImageBytes(PNG_BYTES, '.png', 'weird/../name');
 		expect(path.basename(name)).toBe(name);

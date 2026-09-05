@@ -7,6 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MAX_IMAGE_RESPONSE_BYTES } from './config';
 
+export const pendingMediaFiles = new Set<string>();
+
 export const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 export const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
 
@@ -17,6 +19,20 @@ export interface ImageFormat {
 
 export class MediaValidationError extends Error {
 	/** A provider media response is too large or not the expected format. */
+}
+
+/** Keep a generated file out of concurrent orphan cleanup until it is attached. */
+export function markMediaFilePending(file: string): void {
+	pendingMediaFiles.add(path.basename(file));
+}
+
+export function unmarkMediaFilePending(file: string): void {
+	pendingMediaFiles.delete(path.basename(file));
+}
+
+/** Test hook; production callers always unmark files after attachment. */
+export function clearPendingMediaFilesForTests(): void {
+	pendingMediaFiles.clear();
 }
 
 export function validateImageBytes(raw: Buffer, contentType?: string | null): ImageFormat {

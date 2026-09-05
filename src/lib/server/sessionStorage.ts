@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { backupsDir, dataDir, imagesDir } from './paths';
 import { utcStamp } from './time';
+import { pendingMediaFiles } from './mediaIo';
 
 const BACKUP_KEEP = 5;
 const BACKUP_RE = /^session\..*\.json$/;
@@ -118,7 +119,7 @@ export function backupInvalidSave(
 
 /** Remove generated images not named by the supplied active records. */
 export function cleanupUnreferencedMediaFilesOnDisk(referencedFiles: Iterable<string>): string[] {
-	const referenced = new Set([...referencedFiles].map((file) => path.basename(file)));
+	const referenced = new Set([...referencedFiles, ...pendingMediaFiles].map((file) => path.basename(file)));
 	const removed: string[] = [];
 	const directory = imagesDir();
 	if (!fs.existsSync(directory)) return removed;

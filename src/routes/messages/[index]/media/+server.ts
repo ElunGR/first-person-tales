@@ -6,6 +6,7 @@ import { apiHandler } from '$lib/server/api';
 import { HttpError, isAbortError } from '$lib/server/http';
 import { generateToFile, ImageGenError } from '$lib/server/imageGen';
 import { sessionLock } from '$lib/server/lock';
+import { unmarkMediaFilePending } from '$lib/server/mediaIo';
 import { MediaGenerateRequestSchema } from '$lib/server/models';
 import { imagesDir } from '$lib/server/paths';
 import { ProviderError } from '$lib/server/providerApi';
@@ -43,27 +44,36 @@ export const POST = apiHandler(async ({ params, request }) => {
 	} finally {
 		unregisterOperation(operationId, controller);
 	}
-	const state = await sessionLock.runExclusive(() => {
-		try {
-			getSession().addMedia({
-				messageId: messageId!,
-				kind: 'image',
-				file: name,
-				sourceText: preparedText
-			});
-		} catch (exc) {
-			if (exc instanceof KeyError) {
-				const orphan = path.join(imagesDir(), path.basename(name));
-				try {
-					fs.unlinkSync(orphan);
-				} catch {
-					// Already gone.
+	let attached = false;
+	try {
+		const state = await sessionLock.runExclusive(() => {
+			try {
+				getSession().addMedia({
+					messageId: messageId!,
+					kind: 'image',
+					file: name,
+					sourceText: preparedText
+				});
+				attached = true;
+			} catch (exc) {
+				if (exc instanceof KeyError) {
+					throw new HttpError(409, 'message changed during generation');
 				}
-				throw new HttpError(409, 'message changed during generation');
+				throw exc;
+			} finally {
+				if (!attached) {
+					const orphan = path.join(imagesDir(), path.basename(name));
+					try {
+						fs.unlinkSync(orphan);
+					} catch {
+						// Already gone.
+					}
+				}
 			}
-			throw exc;
-		}
-		return stateResponse();
-	});
-	return json(state);
+			return stateResponse();
+		});
+		return json(state);
+	} finally {
+		unmarkMediaFilePending(name);
+	}
 });

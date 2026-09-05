@@ -76,6 +76,7 @@
 	}
 
 	function saveEdit(): void {
+		if (busy) return;
 		const content = readEditContent();
 		if (content === null) return;
 		if (content === message.content) {
@@ -86,12 +87,17 @@
 	}
 
 	function resendEdit(): void {
+		if (busy) return;
 		const content = readEditContent();
 		if (content === null) return;
 		onResendEdit(index, content);
 	}
 
 	function editKeydown(event: KeyboardEvent): void {
+		if (busy) {
+			event.preventDefault();
+			return;
+		}
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			onCancelEdit();
@@ -135,6 +141,7 @@
 				class="msg-edit"
 				bind:this={editArea}
 				bind:value={editText}
+				disabled={busy}
 				oninput={autosize}
 				onkeydown={editKeydown}
 				rows={Math.min(24, Math.max(4, (message.content || '').split('\n').length + 2))}
@@ -200,7 +207,7 @@
 					type="button"
 					class="edit-resend"
 					disabled={busy}
-					title="Save the edit, delete later turns, and get a new response"
+					title="Save the edit, delete every later turn, and get a new response"
 					onclick={resendEdit}
 				>Save and resend</button>
 			{/if}

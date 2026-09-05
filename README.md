@@ -1,149 +1,163 @@
 # First Person Tales
 
-A local, single-player AI roleplaying game powered by [Venice.ai](https://venice.ai/). Write what your character says and does; the narrator continues the story. Your history stays visible, editable, and under your control.
+A local, single-player AI roleplaying game powered by [Venice.ai](https://venice.ai/). Write what your character says and does; the narrator continues the story. Shape the setting, illustrate a scene, and keep your history visible, editable, and under your control.
 
-![First Person Tales gameplay](assets/screenshot.png)
+![First Person Tales start screen](assets/screenshot-main.webp)
 
-## Project status
+## Quick start
 
-Project is finished no more updates are planned.
+You need **Node.js 20 or newer**, a [Venice API key](https://venice.ai/settings/api), and available API credits. Venice API usage is billed separately from Venice chat subscriptions. Windows is the tested platform; see [other platforms](#other-platforms) below.
 
-## For players
+### 1. Install and launch
 
-### What you need
-
-- [Node.js](https://nodejs.org/) 20 or newer. The game is tested on Windows and should also work on macOS and desktop Linux.
-- A Venice.ai account, an [API key](https://venice.ai/settings/api), and available API credits.
-
-Venice API usage is billed separately from Venice chat subscriptions.
-
-### Install once
-
-Download this project, open its folder in a terminal, and run:
+Download the project, open its folder in a terminal, and run:
 
 ```powershell
 npm install
-```
-
-### Start playing
-
-Whenever you want to play, run:
-
-```powershell
 npm start
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000) in your browser. The first launch prepares the game automatically and takes a little longer; later launches start immediately.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The first launch builds the game automatically and takes a little longer. For later launches, just run `npm start`.
 
-Keep the terminal window open while you play. Press `Ctrl+C` when you want to stop the game.
+Keep the terminal open while playing. Press `Ctrl+C` there to stop the game.
 
-### Choose your character
-
-The game includes a ready-to-play character named Rowan. You can start with Rowan immediately or create your own character before your first story.
-
-Open **Character** in the top bar to edit the active character's description. The system heading remains visible in the `player_character` template in `prompts.yaml`, but is not shown in the player-facing editor. Your changes are saved to a personal, Git-ignored `prompts.local.yaml` file and take effect without restarting the game.
-
-> **Keep one character per story.** The narrator reads the same character sheet on every turn, so changing the character's name mid-story can make the narrator contradict scenes you have already played. Create or switch characters before starting a new game.
-
-First-level Markdown headings (`#`) are reserved for system sections. If you enter one in a character or world description, the game saves it as a second-level heading (`##`).
-
-### Describe the world
-
-Open **World** in the top bar to add optional setting, lore, locations, characters, organizations, or rules. Leave the description empty and save to play without a world description.
-
-The world description follows the character description in narrator, summary, and image-prompt preparation requests. Keep it concise because it uses context on every relevant request.
-
-### Update from the older character editor
-
-This version uses a safer local prompt format in which system headings cannot be edited through the GUI. If you already have a `prompts.local.yaml` created by an older version:
-
-1. Stop the game.
-2. Open the old `prompts.local.yaml` and copy your character description and any world description somewhere safe.
-3. Delete the old `prompts.local.yaml`.
-4. Update the source code and run `npm run build`.
-5. Run `npm start`.
-6. Open **Character** and **World** and paste only the descriptions, without the old system headings.
-
-The game does not modify files that still use the old `player_character` key. It reports the required update steps instead.
-
-### Connect Venice and begin
+### 2. Connect Venice
 
 1. Open **Settings**.
-2. Paste your Venice API key and click **Refresh models**. This saves the key and loads the available models.
-3. Keep the tested default models or choose different ones from the refreshed lists:
-   - **Narrator:** `aion-labs-aion-3-0`.
-   - **Images:** `krea-2-turbo`.
-4. Click **Save**.
-5. Describe the opening scene or your character's first action, then click **Send**.
+2. Paste your API key and click **Refresh models**. This saves the key in your system credential manager and loads the model lists.
+3. Choose a narrator and image model, then click **Save**. The defaults are `aion-labs-aion-3-0` and `krea-2-turbo`; if one is unavailable, select another from the refreshed list.
 
-If a default model is no longer available on Venice, select another model manually. The narrator model continues the story; the image model is only used when you explicitly generate a picture.
+<details>
+<summary>See Settings</summary>
 
-Advanced users may set `VENICE_API_KEY` before starting the game instead. An environment key has priority over the system keychain and is read-only in Settings.
+![Settings: Venice connection, narrator model, and translation language](assets/screenshot-settings.webp)
 
-For example:
+</details>
+
+### 3. Begin a story
+
+Start with the included character **Rowan**, or open **Character** to write your own description. **World** holds optional setting details; leaving it empty lets you establish the world through play.
+
+Write an opening action and click **Send**:
 
 ```text
 I wake beside a dying campfire at the edge of an unfamiliar forest.
 I check my satchel and listen for movement between the trees.
 ```
 
-Use `[OOC: ...]` when you want to give the narrator instructions outside your character:
+Use `[OOC: ...]` to give directions outside your character:
 
 ```text
-[OOC: Describe the setting before the next encounter.]
+[OOC: Set this story aboard a spaceship. Describe the crew and my surroundings.]
 ```
 
-### Story controls
+![An OOC instruction sets a science-fiction scene for the narrator](assets/screenshot-narration.webp)
 
-- **Send** continues the story using the visible history.
-- **Improve** rewrites your draft before you send it.
-- **Translate** translates a message into the language selected in Settings.
-- **Character** edits the active player character (see [Choose your character](#choose-your-character)).
-- **World** edits the optional world description (see [Describe the world](#describe-the-world)).
-- **Summarize context** condenses the active story context; **Undo summary** restores the previous state. Both sit beside the latest-request token counter. Undo asks first if it would also remove newer turns.
-- **Image** prepares an editable scene prompt and generates an image only after you confirm it.
-- **Export / Import** saves or restores your story. Imports create a backup first.
-- **New game** clears the current story. Export anything you want to keep beforehand.
+## Your story, your controls
 
-Story turns, translations, improvements, summaries, and images are requested explicitly. Venice API requests can cost money. The game never summarizes, removes context, generates images, or retries uncertain paid requests automatically.
+| Control | What it does |
+| --- | --- |
+| **Send / Stop** | Ask the narrator to continue, or stop a request in progress. |
+| **Improve** | Rewrite your draft before sending it. |
+| **Edit / Resend / Regenerate** | Adjust a message or request a different continuation. Resending or regenerating an earlier turn replaces the story after that point. |
+| **Translate** | Translate a narrator message into the language selected in Settings. |
+| **Summarize context / Undo summary** | Manually condense the active context or restore the previous context. The visible history stays available after summarizing. Undo asks first if it would also remove newer turns. |
+| **Export / Import** | Save or restore the story as JSON; Markdown export is also available for reading. Import replaces the current story and creates a backup first. |
+| **New game** | Clear the current story and its images. Export anything you want to keep first. |
 
-The quiet status line under the composer always shows whether the game is ready or which explicit operation is running, such as `Narrator is thinking…`.
+The token counter shows the context size of the latest narrator request. A reminder may suggest summarizing, but the decision is always yours.
 
-### Saves and privacy
+AI actions can cost Venice API credits. There are no automatic summaries, background image jobs, hidden memory updates, or silent retries of requests whose outcome is uncertain. Stopping a request cannot guarantee that Venice has not already processed or billed it.
 
-Your current story, settings, generated images, and backups are stored locally in `data/`, which is ignored by Git. Export a JSON save before moving or removing the project if you want to keep a story.
+### Character and world
 
-When entered in Settings, your Venice API key is stored in the current user's native credential manager: Windows Credential Manager, macOS Keychain, or the Secret Service used by desktop Linux. The key is not stored in `data/`, included in story exports, returned to the browser, or written to logs.
+**Character** describes the player. **World** can hold setting, lore, locations, other characters, organizations, or rules. Both descriptions are included in narrator, summary, and image-prompt preparation requests, so keep them focused.
 
-Windows is the platform tested by the maintainer. The same integration should work on macOS and desktop Linux through their native keychains, but those platforms have not been manually verified. Linux requires an available, unlocked Secret Service such as GNOME Keyring or KDE Wallet; headless Linux and some WSL environments should use the read-only `VENICE_API_KEY` environment variable instead.
+Use one character per story: changing their identity halfway through can contradict earlier scenes. Set up a different character before starting a new game. Clearing **World** removes that description from future AI requests.
 
-Requests containing your story are sent to Venice only when you use a feature that requires AI.
+Descriptions are saved in your Git-ignored `prompts.local.yaml` and take effect without restarting. First-level Markdown headings (`#`) are reserved for system sections; the editors save them as second-level headings (`##`). The system templates remain in `prompts.yaml`.
 
-The game is intended for one player on your own computer. Do not expose it to your local network or the internet.
+### Illustrate a scene
 
-### Troubleshooting
+Click **Image** on a narrator message and describe the subject or moment you want to show. Prepare the prompt, edit it if needed, then explicitly generate the image. The result is attached to that message, where you can open it at full size or delete it.
 
-- **npm shows funding, deprecation, or low-severity audit notices:** these are warnings, not installation failures. If installation finishes successfully, continue with `npm start`. Do not run `npm audit fix --force`.
-- **No narrator models appear:** enter your API key, click **Refresh models**, and check that Venice API access is enabled.
-- **The API key cannot be saved:** make sure the current user's system credential manager is available and unlocked. On Linux without a desktop keychain, use `VENICE_API_KEY`. If Settings reports an older encrypted key, enter the key again.
-- **A saved key stops working after running tests:** older image tests could overwrite the real key with a test value or delete it. Update the code, rebuild with `npm run build`, restart the app, and enter your key once more. Tests now use an isolated in-memory credential store and cannot access the native keychain.
-- **A request fails with HTTP 401 or 402:** check your API key and available Venice API credits.
-- **A story is missing after moving the project:** import a previously exported JSON save or restore your local `data/` directory.
-- **A very large story becomes slow or can no longer be imported:** the complete visible history is kept in one local save, so an extremely large file may eventually exceed browser or import limits. Export the story first. If the story continued after its latest summary, summarize it again, then copy the newest `# Story Summary`, start a new game, paste that summary as the first message, and continue playing from it.
+![A generated spaceship scene attached to a narrator message](assets/screenshot-image-generation.webp)
+
+## Saves and privacy
+
+The game saves your current story automatically on your computer:
+
+| Location | Contents |
+| --- | --- |
+| `data/` | Current story, settings, generated images, and backups. |
+| `prompts.local.yaml` | Your character and world descriptions. |
+| System credential manager | Your Venice API key. |
+
+**A JSON export contains the story, translations, and summary state. It does not contain images, settings, or character/world descriptions.** For a full local backup or move, stop the app and keep `data/` and `prompts.local.yaml` as well. On another computer, enter the API key again in Settings. Importing a story does not restore its old images.
+
+The API key is not returned to the browser, written to logs, or included in story exports. Advanced users can set `VENICE_API_KEY` before launching instead; it takes priority over the system keychain and is read-only in Settings.
+
+Your story and relevant descriptions are sent to Venice when you use an AI feature. Local storage does not make AI requests offline. Keep personal saves and descriptions private; they are excluded from Git by default.
+
+This is an application for one player on their own computer. **Do not expose its server to your local network or the internet.**
+
+### Other platforms
+
+Windows is the platform tested by the maintainer. macOS and desktop Linux should work through their native keychains, but have not been manually verified. Linux needs an available, unlocked Secret Service such as GNOME Keyring or KDE Wallet. Headless Linux and some WSL environments should use `VENICE_API_KEY` instead.
+
+## Updating
+
+1. Stop the game and back up `data/` and `prompts.local.yaml`.
+2. Update the project source, preserving those local files.
+3. In the project folder, run:
+
+```powershell
+npm install
+npm run build
+npm start
+```
+
+Rebuilding matters: if a build already exists, `npm start` launches it without rebuilding. Restart the app after an update.
+
+<details>
+<summary>Upgrading from the older character editor</summary>
+
+Older versions stored editable text under `player_character`. The current format keeps system headings separate from your descriptions. If the app reports that `prompts.local.yaml` uses the old format:
+
+1. Stop the game.
+2. Copy your character description and any world description from the old file somewhere safe.
+3. After backing it up, delete the old `prompts.local.yaml`.
+4. Update the source, run `npm run build`, and restart with `npm start`.
+5. Paste only the descriptions into **Character** and **World**, without the old system headings.
+
+The app reports this situation rather than silently rewriting the old file.
+
+</details>
+
+## Troubleshooting
+
+- **No narrator models appear:** enter the API key, click **Refresh models**, and check that Venice API access is enabled.
+- **HTTP 401 or 402:** check your API key and available Venice API credits.
+- **A request stops at `max_completion_tokens`:** check the narrator token limit in Settings. The default is 8000 because this budget includes reasoning as well as the visible answer. Lower limits can run out before an answer is ready, even when the requested reply is short.
+- **The key cannot be saved:** make sure your system credential manager is available and unlocked. On Linux without a desktop keychain, use `VENICE_API_KEY`.
+- **npm prints funding, deprecation, or low-severity audit notices:** these are not necessarily installation failures. If installation succeeds, continue with `npm start`. Do not run `npm audit fix --force`.
+- **The story is missing after moving the project:** restore your `data/` directory or import a JSON export. Restore `prompts.local.yaml` separately for your descriptions.
+- **A very large story becomes slow or cannot be imported:** export it first. If play continued after the latest summary, summarize again, then copy the newest **Story Summary**, start a new game, and use it as the first message. Keep the export as your complete archive. Summarizing alone does not shrink the visible history file.
+
+<details>
+<summary>A saved API key stopped working after running tests on an older version</summary>
+
+Older image tests could overwrite or delete the real key. Update the code, rebuild, restart the app, and enter the key once more. Tests now use isolated in-memory credentials and block access to the native keychain.
+
+</details>
+
+## Project status
+
+Planned feature development is complete. First Person Tales remains a focused local game; future maintenance may address concrete bugs.
 
 ## For developers
 
-This section is only for contributors changing the source code. Players do not need any of these commands.
-
-After installing dependencies with `npm install`, start the development server with:
-
-```powershell
-npm run dev
-```
-
-The development server provides live reloading at [http://127.0.0.1:5173](http://127.0.0.1:5173).
-
-Check changes with:
+After `npm install`, run `npm run dev` for live reloading at [http://127.0.0.1:5173](http://127.0.0.1:5173).
 
 ```powershell
 npm test
@@ -151,15 +165,9 @@ npm run check
 npm run build
 ```
 
-- `npm test` runs automated tests using provider stubs and isolated in-memory credentials; it does not access your native keychain or make paid Venice API requests.
-- `npm run check` validates Svelte and TypeScript.
-- `npm run build` rebuilds the version launched by `npm start` after changing the source code.
+Tests use provider stubs and in-memory credentials; they do not make paid Venice requests or access your native keychain. `check` validates Svelte and TypeScript; `build` prepares the version used by `npm start`.
 
-First Person Tales uses SvelteKit, Svelte 5, TypeScript, and the Venice API.
-
-## Philosophy
-
-One player action produces one visible result. The narrator receives the story you can see, and you can edit, resend, delete, or manually summarize anything that no longer fits the story you want. There is no hidden memory maintenance, automatic context removal, background media work, or silent retry of a potentially paid request. See [PHILOSOPHY.md](PHILOSOPHY.md) for the full design principles.
+Built with SvelteKit, Svelte 5, TypeScript, and the Venice API. See [PHILOSOPHY.md](PHILOSOPHY.md) for the design principles: visible history, manual context management, and explicit AI actions.
 
 ## License
 

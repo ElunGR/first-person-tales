@@ -212,14 +212,23 @@ export function saveSettings(settings: AppSettings): void {
 		path.dirname(filePath),
 		`.${path.basename(filePath)}.${crypto.randomBytes(8).toString('hex')}.tmp`
 	);
-	const fd = fs.openSync(tmpName, 'w');
 	try {
-		fs.writeSync(fd, payload, undefined, 'utf-8');
-		fs.fsyncSync(fd);
-	} finally {
-		fs.closeSync(fd);
+		const fd = fs.openSync(tmpName, 'w');
+		try {
+			fs.writeSync(fd, payload, undefined, 'utf-8');
+			fs.fsyncSync(fd);
+		} finally {
+			fs.closeSync(fd);
+		}
+		fs.renameSync(tmpName, filePath);
+	} catch (err) {
+		try {
+			fs.unlinkSync(tmpName);
+		} catch {
+			// Already renamed or never created.
+		}
+		throw err;
 	}
-	fs.renameSync(tmpName, filePath);
 	if (settingsCorruptPath === filePath) {
 		settingsCorruptPath = null;
 	}

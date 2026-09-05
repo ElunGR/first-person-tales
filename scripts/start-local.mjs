@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 // The application is intentionally local-only. Do not inherit a HOST value
 // that could expose the unauthenticated single-user server to the network.
 process.env.HOST = '127.0.0.1';
+// adapter-node otherwise assumes HTTPS when constructing event.url.origin,
+// which would reject the HTTP Origin sent by the local browser.
+process.env.ORIGIN ??= `http://127.0.0.1:${process.env.PORT ?? '3000'}`;
 // Keep adapter-node's pre-route cap aligned with the application's 4 MiB import cap.
 process.env.BODY_SIZE_LIMIT = '4M';
 

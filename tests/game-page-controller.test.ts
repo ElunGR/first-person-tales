@@ -150,6 +150,72 @@ describe('GamePageController world editor', () => {
 		expect(controller.worldText).toBe('');
 		expect(toastState.message).toBe('World description removed');
 	});
+
+	it('waits for the world load before opening the editor or allowing Save', async () => {
+		let resolveWorld!: (value: Response) => void;
+		const fetchMock = vi.fn(() => new Promise<Response>((resolve) => {
+			resolveWorld = resolve;
+		}));
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+
+		const opening = controller.openWorld();
+
+		expect(controller.worldOpen).toBe(false);
+		expect(controller.busy).toBe(true);
+		await controller.saveWorld('');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+
+		resolveWorld(response({ content: 'Loaded world' }));
+		await opening;
+
+		expect(controller.worldOpen).toBe(true);
+		expect(controller.worldText).toBe('Loaded world');
+		expect(controller.busy).toBe(false);
+	});
+
+	it('waits for the character load before opening the editor', async () => {
+		let resolveCharacter!: (value: Response) => void;
+		vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => {
+			resolveCharacter = resolve;
+		})));
+		const controller = new GamePageController();
+
+		const opening = controller.openCharacter();
+
+		expect(controller.characterOpen).toBe(false);
+		expect(controller.busy).toBe(true);
+		resolveCharacter(response({ content: 'Loaded character' }));
+		await opening;
+
+		expect(controller.characterOpen).toBe(true);
+		expect(controller.characterText).toBe('Loaded character');
+		expect(controller.busy).toBe(false);
+	});
+});
+
+describe('GamePageController request ownership', () => {
+	it('ignores a repeated resend while the first operation is busy', async () => {
+		const pending: Array<(value: Response) => void> = [];
+		const fetchMock = vi.fn(() => new Promise<Response>((resolve) => pending.push(resolve)));
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+		controller.messages = [{ id: 'u', role: 'user', content: 'go' }];
+
+		const first = controller.resendEdit(0, 'go');
+		const second = controller.resendEdit(0, 'go');
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(controller.busy).toBe(true);
+		pending[0](response({
+			message: { id: 'a', role: 'assistant', content: 'reply' },
+			state: { ...EMPTY_STATE, messages: [{ id: 'u', role: 'user', content: 'go' }] }
+		}));
+		await Promise.all([first, second]);
+
+		expect(controller.busy).toBe(false);
+		expect(controller.showStop).toBe(false);
+	});
 });
 
 describe('GamePageController state responses', () => {
@@ -271,6 +337,107 @@ describe('GamePageController state responses', () => {
 
 		expect(confirmMock).not.toHaveBeenCalled();
 		expect(fetch).toHaveBeenCalledWith('/resummary/undo', expect.any(Object));
+	});
+
+	it('names the discarded count before a resend rewinds the story', async () => {
+		const confirmMock = vi.fn(() => false);
+		const fetchMock = vi.fn();
+		vi.stubGlobal('confirm', confirmMock);
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+		controller.messages = [
+			{ id: 'u1', role: 'user', content: 'go north' },
+			{ id: 'a1', role: 'assistant', content: 'reply 1' },
+			{ id: 'u2', role: 'user', content: 'go south' },
+			{ id: 'a2', role: 'assistant', content: 'reply 2' }
+		];
+
+		await controller.resendEdit(0, 'go west');
+
+		expect(confirmMock).toHaveBeenCalledWith(
+			'Save the edit and resend this turn? The 3 messages after it, and any attached images, will be deleted.'
+		);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('still confirms a resend when the edited text is unchanged', async () => {
+		// The editor trims before calling in, so an unchanged string must not
+		// bypass the warning: the tail is discarded either way.
+		const confirmMock = vi.fn(() => false);
+		const fetchMock = vi.fn();
+		vi.stubGlobal('confirm', confirmMock);
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+		controller.messages = [
+			{ id: 'u1', role: 'user', content: 'go north' },
+			{ id: 'a1', role: 'assistant', content: 'reply 1' }
+		];
+
+		await controller.resendEdit(0, 'go north');
+
+		expect(confirmMock).toHaveBeenCalledWith(
+			'Save the edit and resend this turn? The 1 message after it, and any attached images, will be deleted.'
+		);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('resends the last turn without a confirmation', async () => {
+		const confirmMock = vi.fn(() => false);
+		const fetchMock = vi.fn(async () => response({ message: {}, state: EMPTY_STATE }));
+		vi.stubGlobal('confirm', confirmMock);
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+		controller.messages = [{ id: 'u1', role: 'user', content: 'go north' }];
+
+		await controller.resendEdit(0, 'go west');
+
+		expect(confirmMock).not.toHaveBeenCalled();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('names the discarded count before deleting a message and its tail', async () => {
+		const confirmMock = vi.fn(() => false);
+		vi.stubGlobal('confirm', confirmMock);
+		vi.stubGlobal('fetch', vi.fn());
+		const controller = new GamePageController();
+		controller.messages = [
+			{ id: 'u1', role: 'user', content: 'go north' },
+			{ id: 'a1', role: 'assistant', content: 'reply 1' },
+			{ id: 'u2', role: 'user', content: 'go south' }
+		];
+
+		await controller.deleteMessage(0);
+		expect(confirmMock).toHaveBeenCalledWith('Delete this message and the 2 messages after it?');
+
+		await controller.deleteMessage(2);
+		expect(confirmMock).toHaveBeenLastCalledWith('Delete this message?');
+	});
+
+	it.each([
+		['translateMessage', (c: GamePageController) => c.translateMessage(0)],
+		['prepareMedia', (c: GamePageController) => c.prepareMedia('a glowing stone')],
+		['generateMedia', (c: GamePageController) => c.generateMedia('a glowing stone')]
+	])('%s starts no second paid request while one is running', async (_name, invoke) => {
+		const pending: Array<(value: Response) => void> = [];
+		const fetchMock = vi.fn(() => new Promise<Response>((resolve) => pending.push(resolve)));
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+		controller.messages = [{ id: 'a1', role: 'assistant', content: 'reply' }];
+		controller.mediaTargetIndex = 0;
+
+		const first = invoke(controller);
+		const second = invoke(controller);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		// Translation issues a second, sequential request, so keep draining
+		// until the flow stops asking for one.
+		for (let guard = 0; guard < 10 && pending.length > 0; guard += 1) {
+			pending.splice(0).forEach((resolve) =>
+				resolve(response({ text: 'prompt', translation: 'перевод', ...EMPTY_STATE }))
+			);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		await Promise.all([first, second]);
 	});
 
 	it('requires confirmation before undo discards messages after a summary', async () => {

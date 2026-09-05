@@ -120,6 +120,18 @@ describe('settings recovery', () => {
 		expect(reloaded.narrator_temperature).toBeCloseTo(1.1);
 		expect(reloaded.translation_language).toBe('Korean');
 	});
+
+	it('removes the temporary settings file when atomic replace fails', () => {
+		const settings = loadSettings();
+		const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+			throw new Error('EPERM: rename failed');
+		});
+
+		expect(() => saveSettings(settings)).toThrow('rename failed');
+		renameSpy.mockRestore();
+		expect(fs.readdirSync(dataDir()).filter((name) => name.includes('.settings.json.') && name.endsWith('.tmp')))
+			.toEqual([]);
+	});
 });
 describe('keyring status handling', () => {
 	it('reports keychain when a key is stored', async () => {

@@ -1,7 +1,7 @@
 /** Session autosave / load tests. Port of tests/test_session.py. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { newMessage } from '../src/lib/server/models';
 import { backupsDir, imagesDir, sessionPath } from '../src/lib/server/paths';
 import {
@@ -26,6 +26,31 @@ function allBackupPaths(): string[] {
 }
 
 describe('session persistence', () => {
+	it('rolls appendMessage back after a final rename failure and can retry once', () => {
+		const first = newMessage({ role: 'user', content: 'persisted' });
+		const appended = newMessage({ role: 'assistant', content: 'new reply' });
+		const session = new Session({ messages: [first] });
+		session.save();
+		const before = fs.readFileSync(sessionPath());
+		const rename = fs.renameSync;
+		const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation((source, destination) => {
+			if (destination === sessionPath()) throw new Error('EPERM: final session rename failed');
+			return rename(source, destination);
+		});
+		try {
+			expect(() => session.appendMessage(appended)).toThrow('final session rename failed');
+			expect(renameSpy).toHaveBeenCalledTimes(1);
+			expect(session.messages).toEqual([first]);
+			expect(fs.readFileSync(sessionPath())).toEqual(before);
+			expect(fs.readdirSync(tmp.dir()).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+		} finally {
+			renameSpy.mockRestore();
+		}
+		session.appendMessage(appended);
+		expect(session.messages).toEqual([first, appended]);
+		expect(Session.load()!.messages).toEqual([first, appended]);
+	});
+
 	it('save creates session.json', () => {
 		const s = new Session();
 		setSession(s);
@@ -130,6 +155,85 @@ describe('session persistence', () => {
 		expect(s.media).toEqual([]);
 		expect(fs.readdirSync(imagesDir())).toEqual([]);
 		expect(fs.existsSync(imagesDir())).toBe(true);
+	});
+
+	it('ordinary message mutations roll memory and disk back when save fails', () => {
+		const first = newMessage({ role: 'assistant', content: 'first', translation_ru: 'old' });
+		const second = newMessage({ role: 'assistant', content: 'second' });
+		const s = new Session({ messages: [first, second] });
+		s.save();
+		const persistedBefore = fs.readFileSync(sessionPath());
+		const saveSpy = vi.spyOn(s, 'save').mockImplementation(() => {
+			throw new Error('EPERM: rename failed');
+		});
+
+		expect(() => s.updateMessage(0, 'changed')).toThrow('rename failed');
+		expect(s.messages[0]).toEqual(first);
+		expect(fs.readFileSync(sessionPath())).toEqual(persistedBefore);
+
+		expect(() => s.setTranslation(0, 'новый перевод')).toThrow('rename failed');
+		expect(s.messages[0].translation_ru).toBe('old');
+
+		expect(() => s.truncateFrom(1)).toThrow('rename failed');
+		expect(s.messages.map((message) => message.id)).toEqual([first.id, second.id]);
+		expect(fs.readFileSync(sessionPath())).toEqual(persistedBefore);
+
+		saveSpy.mockRestore();
+		s.updateMessage(0, 'changed');
+		expect(s.messages[0].content).toBe('changed');
+	});
+
+	it('media mutations roll back without losing files or attaching an uncommitted record', () => {
+		const message = newMessage({ role: 'assistant', content: 'scene' });
+		const s = new Session({ messages: [message] });
+		s.save();
+		const saveSpy = vi.spyOn(s, 'save').mockImplementation(() => {
+			throw new Error('EPERM: rename failed');
+		});
+
+		expect(() => s.addMedia({ messageId: message.id, kind: 'image', file: 'new.png' })).toThrow('rename failed');
+		expect(s.media).toEqual([]);
+
+		saveSpy.mockRestore();
+		const record = s.addMedia({ messageId: message.id, kind: 'image', file: 'scene.png' });
+		fs.writeFileSync(path.join(imagesDir(), 'scene.png'), Buffer.from('image'));
+		const persistedBefore = fs.readFileSync(sessionPath());
+		const deleteSpy = vi.spyOn(s, 'save').mockImplementation(() => {
+			throw new Error('EPERM: rename failed');
+		});
+
+		expect(() => s.deleteMedia(record.id)).toThrow('rename failed');
+		expect(s.media).toEqual([record]);
+		expect(fs.readFileSync(sessionPath())).toEqual(persistedBefore);
+		expect(fs.existsSync(path.join(imagesDir(), 'scene.png'))).toBe(true);
+
+		deleteSpy.mockRestore();
+		s.deleteMedia(record.id);
+		expect(s.media).toEqual([]);
+		expect(fs.existsSync(path.join(imagesDir(), 'scene.png'))).toBe(false);
+	});
+
+	it('a failed reset preserves the previous session and image files', () => {
+		const message = newMessage({ role: 'assistant', content: 'old story' });
+		const s = new Session({ messages: [message] });
+		s.save();
+		const imagePath = path.join(imagesDir(), 'old.png');
+		fs.writeFileSync(imagePath, Buffer.from('old image'));
+		const persistedBefore = fs.readFileSync(sessionPath());
+		const saveSpy = vi.spyOn(s, 'save').mockImplementation(() => {
+			throw new Error('EPERM: rename failed');
+		});
+
+		expect(() => s.reset()).toThrow('rename failed');
+		expect(s.messages).toEqual([message]);
+		expect(fs.readFileSync(sessionPath())).toEqual(persistedBefore);
+		expect(fs.readFileSync(imagePath)).toEqual(Buffer.from('old image'));
+
+		saveSpy.mockRestore();
+		s.reset();
+		expect(s.messages).toEqual([]);
+		expect(fs.readFileSync(sessionPath())).toEqual(Buffer.from(JSON.stringify(s.toDict(), null, 2)));
+		expect(fs.existsSync(imagePath)).toBe(false);
 	});
 });
 

@@ -213,9 +213,15 @@ export class Session {
 	}
 
 	appendMessage(message: Message, options: { persist?: boolean } = {}): Message {
+		const snapshot = options.persist === false ? null : this.snapshotTranscript();
 		this.messages.push(message);
 		if (options.persist !== false) {
-			this.save();
+			try {
+				this.save();
+			} catch (err) {
+				this.restoreTranscript(snapshot!, { persist: false });
+				throw err;
+			}
 		}
 		return message;
 	}
@@ -224,13 +230,19 @@ export class Session {
 		if (index < 0 || index >= this.messages.length) {
 			throw new RangeError(String(index));
 		}
+		const snapshot = this.snapshotTranscript();
 		const msg = this.messages[index];
 		const updated: Message = { ...msg, content };
 		if (content !== msg.content) {
 			updated.translation_ru = null;
 		}
 		this.messages[index] = updated;
-		this.save();
+		try {
+			this.save();
+		} catch (err) {
+			this.restoreTranscript(snapshot, { persist: false });
+			throw err;
+		}
 		return this.messages[index];
 	}
 
@@ -239,13 +251,19 @@ export class Session {
 		if (index < 0 || index >= this.messages.length) {
 			throw new RangeError(String(index));
 		}
+		const snapshot = this.snapshotTranscript();
 		const removedIds = new Set(this.messages.slice(index).map((message) => message.id));
 		const removedMedia = this.media.filter((item) => removedIds.has(item.message_id));
 		this.messages = this.messages.slice(0, index);
 		this.media = this.media.filter((item) => !removedIds.has(item.message_id));
 		this.reconcileNarratorStart();
 		if (options.persist !== false) {
-			this.save();
+			try {
+				this.save();
+			} catch (err) {
+				this.restoreTranscript(snapshot, { persist: false });
+				throw err;
+			}
 		}
 		if (cleanupFiles) {
 			this.deleteMediaFiles(removedMedia);
@@ -256,9 +274,15 @@ export class Session {
 		if (index < 0 || index >= this.messages.length) {
 			throw new RangeError(String(index));
 		}
+		const snapshot = this.snapshotTranscript();
 		const msg = this.messages[index];
 		this.messages[index] = { ...msg, translation_ru: translation };
-		this.save();
+		try {
+			this.save();
+		} catch (err) {
+			this.restoreTranscript(snapshot, { persist: false });
+			throw err;
+		}
 		return this.messages[index];
 	}
 
@@ -287,8 +311,14 @@ export class Session {
 			source_text: input.sourceText ?? '',
 			created_at: utcNowIso()
 		};
+		const snapshot = this.snapshotTranscript();
 		this.media.push(record);
-		this.save();
+		try {
+			this.save();
+		} catch (err) {
+			this.restoreTranscript(snapshot, { persist: false });
+			throw err;
+		}
 		return record;
 	}
 
@@ -297,24 +327,40 @@ export class Session {
 		if (!existing) {
 			throw new KeyError(mediaId);
 		}
+		const snapshot = this.snapshotTranscript();
 		this.media = this.media.filter((item) => item.id !== mediaId);
-		this.save();
+		try {
+			this.save();
+		} catch (err) {
+			this.restoreTranscript(snapshot, { persist: false });
+			throw err;
+		}
 		this.deleteMediaFiles([existing]);
 	}
 
 	/** New game: wipe the story and all generated media. */
 	reset(): void {
+		const snapshot = this.snapshotTranscript();
 		this.messages = [];
 		this.media = [];
 		this.narratorStart = 0;
 		this.summaryCheckpoints = [];
 		this.lastNarratorPromptTokens = null;
-		const directory = imagesDir();
-		if (fs.existsSync(directory)) {
-			fs.rmSync(directory, { recursive: true, force: true });
+		try {
+			// The empty session is the durable commit. Only clean old media after
+			// that succeeds so a failed save cannot destroy the previous game.
+			this.save();
+		} catch (err) {
+			this.restoreTranscript(snapshot, { persist: false });
+			throw err;
 		}
-		fs.mkdirSync(directory, { recursive: true });
-		this.save();
+		try {
+			cleanupUnreferencedMediaFiles(this);
+			fs.mkdirSync(imagesDir(), { recursive: true });
+		} catch (err) {
+			// Reset already committed; leave cleanup for a later safe retry.
+			console.warn(`Could not clean old media after reset: ${err}`);
+		}
 		cleanupInvalidSaveBackups();
 	}
 

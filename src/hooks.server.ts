@@ -6,7 +6,7 @@
 import crypto from 'node:crypto';
 import type { Handle } from '@sveltejs/kit';
 import { recordFailure } from '$lib/server/diagnostics';
-import { HttpError, jsonError } from '$lib/server/http';
+import { HttpError, jsonError, validateUnsafeRequest } from '$lib/server/http';
 import { loadOrCreate, recoveryMessage } from '$lib/server/session';
 
 // FastAPI ran load_or_create() in its lifespan hook; SvelteKit imports this
@@ -19,8 +19,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 	try {
 		const method = event.request.method;
 		const pathname = event.url.pathname;
+		if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+			validateUnsafeRequest(event.request, event.url.origin, pathname);
+		}
 		// While recovery is pending, only /reset may mutate anything.
-		if (recoveryMessage() && ['POST', 'PUT', 'DELETE'].includes(method) && pathname !== '/reset') {
+		if (recoveryMessage() && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method) && pathname !== '/reset') {
 			response = jsonError(409, recoveryMessage());
 		} else {
 			response = await resolve(event);

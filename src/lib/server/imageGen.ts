@@ -9,7 +9,13 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { IMAGE_SAFE_MODE } from './config';
 import { getApiKey } from './keyring';
-import { atomicWriteBytes, MediaValidationError, validateImageBytes } from './mediaIo';
+import {
+	atomicWriteBytes,
+	markMediaFilePending,
+	MediaValidationError,
+	unmarkMediaFilePending,
+	validateImageBytes
+} from './mediaIo';
 import { imagesDir } from './paths';
 import { ProviderError, selectedModelCapabilities, veniceRequest } from './providerApi';
 import { loadSettings, providerSettings, providerUrl } from './settings';
@@ -60,8 +66,10 @@ export function saveImageBytes(raw: Buffer, ext: string, filename?: string): str
 		name = `${name.slice(0, -suppliedExtension.length)}${detectedExtension}`;
 	}
 	try {
+		markMediaFilePending(name);
 		atomicWriteBytes(imagesDir(), name, raw);
 	} catch {
+		unmarkMediaFilePending(name);
 		throw new ImageGenError('could not save image atomically');
 	}
 	return name;

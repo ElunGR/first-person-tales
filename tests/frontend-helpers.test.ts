@@ -2,8 +2,49 @@
 import { describe, expect, it } from 'vitest';
 import { matchesSearch, messageTargetPayload, MessageSearchIndex } from '../src/lib/frontend/helpers';
 import { mergeReused, sameMedia, sameMessage } from '../src/lib/frontend/state';
+import { escapeHtml, formatChatHtml } from '../src/lib/frontend/format';
 
 describe('frontend helpers', () => {
+	it('formats supported markup without placeholder expansion or HTML injection', () => {
+		expect(formatChatHtml('**bold** *italic* [note] <script>alert(1)</script>')).toBe(
+			'<strong>bold</strong> <em>italic</em> <span class="msg-note">[note]</span> &lt;script&gt;alert(1)&lt;/script&gt;'
+		);
+	});
+
+	it('renders private-use marker text in finite time', () => {
+		expect(formatChatHtml('**\uE0000\uE001**')).toBe('<strong>\uE0000\uE001</strong>');
+	});
+
+	it('encodes both quote styles so escaped text is attribute-safe', () => {
+		expect(escapeHtml(`he said "stop" & it's over <br>`)).toBe(
+			'he said &quot;stop&quot; &amp; it&#39;s over &lt;br&gt;'
+		);
+		expect(formatChatHtml(`**it's**`)).toBe('<strong>it&#39;s</strong>');
+	});
+
+	it.each([
+		['[OOC: use *italics* and **bold**]', '<span class="msg-note">[OOC: use <em>italics</em> and <strong>bold</strong>]</span>'],
+		['**heading\nsecond line**', '<strong>heading\nsecond line</strong>'],
+		['[first line\n**second**]', '<span class="msg-note">[first line\n<strong>second</strong>]</span>'],
+		['*quiet **footsteps** nearby*', '<em>quiet <strong>footsteps</strong> nearby</em>'],
+		['***both***', '<em><strong>both</strong></em>'],
+		['**[literal note]**', '<strong>[literal note]</strong>'],
+		['[link](https://example.invalid)', '[link](https://example.invalid)'],
+		['unfinished **bold and [note', 'unfinished **bold and [note'],
+		['*first\nsecond*', '*first\nsecond*']
+	])('preserves supported formatting for %j', (input, expected) => {
+		expect(formatChatHtml(input)).toBe(expected);
+	});
+
+	it('escapes HTML inside nested formatting and preserves literal marker characters', () => {
+		expect(formatChatHtml('[**<img src=x onerror="bad()">** & *<script>bad()</script>*]')).toBe(
+		'<span class="msg-note">[<strong>&lt;img src=x onerror=&quot;bad()&quot;&gt;</strong> &amp; <em>&lt;script&gt;bad()&lt;/script&gt;</em>]</span>'
+		);
+		expect(formatChatHtml('[*\uE0000\uE001* **\u0000**] \uE000999\uE001')).toBe(
+		'<span class="msg-note">[<em>\uE0000\uE001</em> <strong>\u0000</strong>]</span> \uE000999\uE001'
+		);
+	});
+
 	it('messageTargetPayload returns the id at index or null', () => {
 		const messages = [{ id: 'a' }, { id: 'b' }] as Array<{ id: string }>;
 		expect(messageTargetPayload(messages, 0)).toEqual({ message_id: 'a' });

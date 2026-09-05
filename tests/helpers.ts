@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, vi } from 'vitest';
 import { resetDataDir, setDataDir } from '../src/lib/server/paths';
+import { clearPendingMediaFilesForTests } from '../src/lib/server/mediaIo';
 import { clearPromptCache } from '../src/lib/server/prompts';
 import { Session, setSession } from '../src/lib/server/session';
 
@@ -15,6 +16,7 @@ export function useTempDataDir() {
 		setSession(new Session());
 	});
 	afterEach(() => {
+		clearPendingMediaFilesForTests();
 		resetDataDir();
 		try {
 			fs.rmSync(state.dir, { recursive: true, force: true });
