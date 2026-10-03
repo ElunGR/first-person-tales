@@ -25,7 +25,7 @@ Keep the terminal open while playing. Press `Ctrl+C` there to stop the game.
 
 1. Open **Settings**.
 2. Paste your API key and click **Refresh models**. This saves the key in your system credential manager and loads the model lists.
-3. Choose a narrator and image model, then click **Save**. The defaults are `aion-labs-aion-3-0` and `krea-2-turbo`; if one is unavailable, select another from the refreshed list.
+3. Choose a narrator and image model, then click **Save**. The defaults are `aion-labs-aion-3-5` and `krea-2-turbo`; if one is unavailable, select another from the refreshed list. Updating does not replace a model you already saved.
 
 <details>
 <summary>See Settings</summary>
@@ -62,7 +62,7 @@ Use `[OOC: ...]` to give directions outside your character:
 | **Edit / Resend / Regenerate** | Adjust a message or request a different continuation. Resending or regenerating an earlier turn replaces the story after that point. |
 | **Translate** | Translate a narrator message into the language selected in Settings. |
 | **Summarize context / Undo summary** | Manually condense the active context or restore the previous context. The visible history stays available after summarizing. Undo asks first if it would also remove newer turns. |
-| **Export / Import** | Save or restore the story as JSON; Markdown export is also available for reading. Import replaces the current story and creates a backup first. |
+| **Export / Import** | Save or restore history, character, and world together as JSON. Import creates a text-only backup first and replaces the active game. Markdown is for reading, not import. |
 | **New game** | Clear the current story and its images. Export anything you want to keep first. |
 
 The token counter shows the context size of the latest narrator request. A reminder may suggest summarizing, but the decision is always yours.
@@ -75,11 +75,13 @@ AI actions can cost Venice API credits. There are no automatic summaries, backgr
 
 Use one character per story: changing their identity halfway through can contradict earlier scenes. Set up a different character before starting a new game. Clearing **World** removes that description from future AI requests.
 
-Descriptions are saved in your Git-ignored `prompts.local.yaml` and take effect without restarting. First-level Markdown headings (`#`) are reserved for system sections; the editors save them as second-level headings (`##`). The system templates remain in `prompts.yaml`.
+Descriptions are saved in your Git-ignored `prompts.local.yaml` and take effect without restarting. Each description is limited to 10,000 characters. If another tab loads a different game, reopen an old description editor before saving. First-level Markdown headings (`#`) are reserved for system sections; the editors save them as second-level headings (`##`). The system templates remain in `prompts.yaml`.
 
 ### Illustrate a scene
 
-Click **Image** on a narrator message and describe the subject or moment you want to show. Prepare the prompt, edit it if needed, then explicitly generate the image. The result is attached to that message, where you can open it at full size or delete it.
+Click **Image** on a narrator message and describe the subject or moment you want to show: a person, a group interacting, an item, or a location. Prepare the prompt, edit it if needed, then explicitly generate the image. The result is attached to that message, where you can open it at full size or delete it.
+
+In **Settings → Media → Image style**, choose from 12 styles, including anime, photorealistic, cinematic, watercolor, manga, and pixel art. **None (prompt only)** is the default. A selected style appends plain text such as `Style: anime` when generating; the scene prompt remains editable, and the model's prompt limit includes that suffix. The image dialog shows the selected style. Reopen it after changing Settings; how closely the result follows the style depends on the image model.
 
 ![A generated spaceship scene attached to a narrator message](assets/screenshot-image-generation.webp)
 
@@ -93,11 +95,23 @@ The game saves your current story automatically on your computer:
 | `prompts.local.yaml` | Your character and world descriptions. |
 | System credential manager | Your Venice API key. |
 
-**A JSON export contains the story, translations, and summary state. It does not contain images, settings, or character/world descriptions.** For a full local backup or move, stop the app and keep `data/` and `prompts.local.yaml` as well. On another computer, enter the API key again in Settings. Importing a story does not restore its old images.
+**New JSON saves (format version 2) contain history, translations, summary state, and the current character and world descriptions. They do not contain images, settings, or API keys.** JSON import restores the text game together, including an intentionally empty world. Older version 1 exports still work but leave the current descriptions unchanged. Markdown also includes descriptions and is for reading only.
+
+Before each import, an importable text-only backup is saved as `data/backups/game.pre-import-...json`. These game backups are not automatically pruned; keep the ones you need and remove old ones manually. Import uses a recovery journal so a failed write does not leave the history and descriptions from different games. If recovery cannot finish, resolve the file-access problem and restart; do not delete the pending journal just to bypass the warning.
+
+**Import deletes the previous game's images after the text save succeeds; neither JSON nor its backup can restore them.** Save wanted images separately. For a complete local backup or move, stop the app and keep `data/` and `prompts.local.yaml` as well. On another computer, enter the API key again in Settings. JSON import requests are limited to 4 MiB; too-large JSON exports or pre-import backups are refused before changing the active game. Markdown remains available for reading larger histories.
+
+### Switch between saved worlds
+
+1. Export the active game with **Export JSON save** and give the file a recognizable name.
+2. Choose **Import JSON save** for another world and read the replacement warning.
+3. To return, import the first world's JSON or its pre-import backup. Use new version 2 saves for full switching; version 1 files do not include descriptions.
+
+Use one active game tab and one server process per project folder. If the connection breaks or the server returns a 5xx error during import, its outcome may be unknown even when the server finished. The app blocks further actions until you reload the page and verify the active game; it never retries the import automatically.
 
 The API key is not returned to the browser, written to logs, or included in story exports. Advanced users can set `VENICE_API_KEY` before launching instead; it takes priority over the system keychain and is read-only in Settings.
 
-Your story and relevant descriptions are sent to Venice when you use an AI feature. Local storage does not make AI requests offline. Keep personal saves and descriptions private; they are excluded from Git by default.
+Your story and relevant descriptions are sent to Venice when you use an AI feature. Local storage does not make AI requests offline. Keep personal saves and descriptions private. Runtime data and local descriptions are Git-ignored; store downloaded exports outside the project folder and never commit them.
 
 This is an application for one player on their own computer. **Do not expose its server to your local network or the internet.**
 
@@ -141,8 +155,8 @@ The app reports this situation rather than silently rewriting the old file.
 - **A request stops at `max_completion_tokens`:** check the narrator token limit in Settings. The default is 8000 because this budget includes reasoning as well as the visible answer. Lower limits can run out before an answer is ready, even when the requested reply is short.
 - **The key cannot be saved:** make sure your system credential manager is available and unlocked. On Linux without a desktop keychain, use `VENICE_API_KEY`.
 - **npm prints funding, deprecation, or low-severity audit notices:** these are not necessarily installation failures. If installation succeeds, continue with `npm start`. Do not run `npm audit fix --force`.
-- **The story is missing after moving the project:** restore your `data/` directory or import a JSON export. Restore `prompts.local.yaml` separately for your descriptions.
-- **A very large story becomes slow or cannot be imported:** export it first. If play continued after the latest summary, summarize again, then copy the newest **Story Summary**, start a new game, and use it as the first message. Keep the export as your complete archive. Summarizing alone does not shrink the visible history file.
+- **The story is missing after moving the project:** restore your `data/` directory or import a version 2 JSON save to restore history and descriptions together. A version 1 export needs `prompts.local.yaml` restored separately.
+- **A very large story becomes slow or cannot be exported as JSON/imported:** save a Markdown archive and, with the app stopped, back up `data/` and `prompts.local.yaml` before resetting. If play continued after the latest summary, summarize again, then copy the newest **Story Summary**, start a new game, and use it as the first message. Keep the archive as your complete history. Summarizing alone does not shrink the visible history file.
 
 <details>
 <summary>A saved API key stopped working after running tests on an older version</summary>

@@ -14,6 +14,8 @@ import {
 	NARRATOR_TOP_P
 } from './config';
 import { DEFAULT_TRANSLATION_LANGUAGE, TRANSLATION_LANGUAGES } from '$lib/translationLanguages';
+import { IMAGE_STYLES } from '$lib/imageStyles';
+import { MAX_DESCRIPTION_CHARS, normalizeUserDescription } from '$lib/descriptions';
 
 export const MEDIA_KINDS = ['image'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
@@ -112,6 +114,7 @@ export type MediaPrepareRequest = z.infer<typeof MediaPrepareRequestSchema>;
 export const MediaGenerateRequestSchema = z.strictObject({
 	kind: z.enum(MEDIA_KINDS),
 	text: z.string().max(10000),
+	image_style: z.enum(IMAGE_STYLES).optional(),
 	message_id: z.string().nullable().optional()
 });
 export type MediaGenerateRequest = z.infer<typeof MediaGenerateRequestSchema>;
@@ -129,21 +132,36 @@ export const SettingsUpdateRequestSchema = z.strictObject({
 	narrator_max_tokens: z.number().int().min(16).max(8192).default(NARRATOR_MAX_COMPLETION_TOKENS),
 	narrator_top_p: z.number().min(0.01).max(1).default(NARRATOR_TOP_P),
 	translation_language: z.enum(TRANSLATION_LANGUAGES).default(DEFAULT_TRANSLATION_LANGUAGE),
+	image_style: z.enum(IMAGE_STYLES).optional(),
 	providers: z.strictObject({ venice: ProviderModelsSchema.optional() }),
 	api_key: z.string().nullable().optional(),
 	clear_api_key: z.boolean().default(false)
 });
 export type SettingsUpdateRequest = z.infer<typeof SettingsUpdateRequestSchema>;
 
-/** Versioned, strict boundary for the history import/export contract. */
-export const HistoryExportSchema = z.strictObject({
+/** Validate normalized size too: demoting headings may add characters. */
+export const WorldDescriptionSchema = z.string().max(MAX_DESCRIPTION_CHARS)
+	.transform(normalizeUserDescription).pipe(z.string().max(MAX_DESCRIPTION_CHARS));
+export const CharacterDescriptionSchema = WorldDescriptionSchema.refine(
+	(value) => value.length > 0, 'Character must not be empty'
+);
+
+/** v1 restores history only; v2 also restores the editable character and world. */
+export const HistoryExportV1Schema = z.strictObject({
 	version: z.literal(1),
-	messages: z.array(MessageSchema),
+	messages: z.array(MessageSchema.extend({ id: z.string().min(1) })),
 	narrator_start: z.number().int(),
-	summary_checkpoints: z.array(SummaryCheckpointSchema),
+	summary_checkpoints: z.array(SummaryCheckpointSchema.extend({ id: z.string().min(1) })),
 	last_narrator_prompt_tokens: z.number().int().nullable()
 });
+export const GameExportSchema = HistoryExportV1Schema.extend({
+	version: z.literal(2),
+	player_character_description: CharacterDescriptionSchema,
+	world_description: WorldDescriptionSchema
+});
+export const HistoryExportSchema = z.discriminatedUnion('version', [HistoryExportV1Schema, GameExportSchema]);
 export type HistoryExport = z.infer<typeof HistoryExportSchema>;
+export type GameExport = z.infer<typeof GameExportSchema>;
 
 export interface StateResponse {
 	messages: Message[];

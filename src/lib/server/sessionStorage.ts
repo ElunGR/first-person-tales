@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { backupsDir, dataDir, imagesDir } from './paths';
 import { utcStamp } from './time';
-import { pendingMediaFiles } from './mediaIo';
+import { pendingMediaFiles, writeAllBytes } from './mediaIo';
 
 const BACKUP_KEEP = 5;
 const BACKUP_RE = /^session\..*\.json$/;
@@ -29,7 +29,7 @@ export function writeSessionFileAtomic(target: string, payload: string): void {
 	try {
 		const fd = fs.openSync(tmpName, 'w');
 		try {
-			fs.writeSync(fd, payload, undefined, 'utf-8');
+			writeAllBytes(fd, Buffer.from(payload, 'utf-8'));
 			fs.fsyncSync(fd);
 		} finally {
 			fs.closeSync(fd);

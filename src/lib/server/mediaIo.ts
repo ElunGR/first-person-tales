@@ -58,6 +58,18 @@ export function validateImageBytes(raw: Buffer, contentType?: string | null): Im
 	return format;
 }
 
+/** Complete a descriptor write even when the filesystem accepts only a prefix. */
+export function writeAllBytes(fd: number, raw: Buffer): void {
+	let offset = 0;
+	while (offset < raw.length) {
+		const written = fs.writeSync(fd, raw, offset, raw.length - offset, null);
+		if (!Number.isInteger(written) || written <= 0 || written > raw.length - offset) {
+			throw new Error('Could not write the complete file');
+		}
+		offset += written;
+	}
+}
+
 /** Write bytes through a same-directory temp file and atomic replace. */
 export function atomicWriteBytes(directory: string, name: string, raw: Buffer): string {
 	const safeName = path.basename(name);
@@ -70,7 +82,7 @@ export function atomicWriteBytes(directory: string, name: string, raw: Buffer): 
 	try {
 		const fd = fs.openSync(temporary, 'w');
 		try {
-			fs.writeSync(fd, raw);
+			writeAllBytes(fd, raw);
 			fs.fsyncSync(fd);
 		} finally {
 			fs.closeSync(fd);

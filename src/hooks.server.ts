@@ -8,6 +8,7 @@ import type { Handle } from '@sveltejs/kit';
 import { recordFailure } from '$lib/server/diagnostics';
 import { HttpError, jsonError, validateUnsafeRequest } from '$lib/server/http';
 import { loadOrCreate, recoveryMessage } from '$lib/server/session';
+import { assertNoPendingGameImport } from '$lib/server/gameImportTransaction';
 
 // FastAPI ran load_or_create() in its lifespan hook; SvelteKit imports this
 // module once when the server (dev or node build) starts.
@@ -17,6 +18,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const requestId = crypto.randomBytes(16).toString('hex').slice(0, 12);
 	let response: Response;
 	try {
+		assertNoPendingGameImport();
 		const method = event.request.method;
 		const pathname = event.url.pathname;
 		if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {

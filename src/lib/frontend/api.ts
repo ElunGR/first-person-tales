@@ -7,6 +7,14 @@ export interface ApiOptions {
 	operationId?: string | null;
 }
 
+/** A completed HTTP failure, not a commit marker; distinct from lost transport or unreadable success JSON. */
+export class ApiError extends Error {
+	constructor(message: string, readonly status: number) {
+		super(message);
+		this.name = 'ApiError';
+	}
+}
+
 export async function api<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
 	const init: RequestInit = { method: options.method ?? 'GET', headers: {} };
 	if (options.operationId) {
@@ -28,7 +36,7 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
 		}
 		const requestId = resp.headers.get('X-Request-ID');
 		const suffix = requestId ? ` [ID: ${requestId}]` : '';
-		throw new Error((typeof detail === 'string' ? detail : JSON.stringify(detail)) + suffix);
+		throw new ApiError((typeof detail === 'string' ? detail : JSON.stringify(detail)) + suffix, resp.status);
 	}
 	if (resp.status === 204) return null as T;
 	return (await resp.json()) as T;

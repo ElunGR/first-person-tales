@@ -15,7 +15,7 @@ export const APPLICATION_USER_AGENT: string = `${packageInfo.name}/${packageInfo
 
 // Defaults used by persistent narrator settings and low-level compatibility.
 export const DEFAULT_API_SERVER: string = 'https://api.venice.ai/api/v1';
-export const DEFAULT_NARRATOR_MODEL: string = 'aion-labs-aion-3-0';
+export const DEFAULT_NARRATOR_MODEL: string = 'aion-labs-aion-3-5';
 export const DEFAULT_IMAGE_MODEL: string = 'krea-2-turbo';
 
 // Venice-only image option. Provider, key and model come from AppSettings.

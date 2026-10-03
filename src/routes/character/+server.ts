@@ -1,25 +1,31 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { apiHandler, parseBody } from '$lib/server/api';
-import {
-	getPlayerCharacterDescription,
-	savePlayerCharacterDescription
-} from '$lib/server/prompts';
+import { HttpError } from '$lib/server/http';
+import { sessionLock } from '$lib/server/lock';
+import { CharacterDescriptionSchema } from '$lib/server/models';
+import { getPlayerCharacterDescription, savePlayerCharacterDescription } from '$lib/server/prompts';
+import { getGameRevision, getSession } from '$lib/server/session';
 
 const CharacterUpdateSchema = z.strictObject({
-	content: z
-		.string()
-		.max(10000)
-		.refine((value) => value.trim().length > 0, 'Character must not be empty')
+	content: CharacterDescriptionSchema,
+	game_revision: z.string().optional()
 });
 
-/** Return only the editable character description; the system heading stays server-owned. */
+/** System headings stay server-owned; the token protects a stale description editor. */
 export const GET = apiHandler(async () => {
-	return json({ content: getPlayerCharacterDescription() });
+	return json(await sessionLock.runExclusive(() => ({
+		content: getPlayerCharacterDescription(), game_revision: getGameRevision()
+	})));
 });
 
-/** Persist only the editable character description. */
 export const PUT = apiHandler(async ({ request }) => {
+	const targetSession = getSession();
 	const body = await parseBody(request, CharacterUpdateSchema);
-	return json({ content: savePlayerCharacterDescription(body.content) });
+	return json(await sessionLock.runExclusive(() => {
+		if (getSession() !== targetSession || (body.game_revision !== undefined && body.game_revision !== getGameRevision())) {
+			throw new HttpError(409, 'Game changed; reopen the character editor before saving');
+		}
+		return { content: savePlayerCharacterDescription(body.content), game_revision: getGameRevision() };
+	}));
 });

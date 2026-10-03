@@ -8,17 +8,69 @@ import { pendingMediaFiles } from '../src/lib/server/mediaIo';
 import { newMessage } from '../src/lib/server/models';
 import { imagesDir } from '../src/lib/server/paths';
 import { clearModelCapabilitiesForTests } from '../src/lib/server/providerApi';
-import { cleanupUnreferencedMediaFiles, Session, setSession } from '../src/lib/server/session';
+import { cleanupUnreferencedMediaFiles, getSession, Session, setSession } from '../src/lib/server/session';
 import { defaultSettings, resetSettingsStateForTests, saveSettings } from '../src/lib/server/settings';
-import { useTempDataDir } from './helpers';
+import { useTempDataDir, useTempPromptRoot } from './helpers';
 
 useTempDataDir();
+useTempPromptRoot();
 
 afterEach(() => {
 	clearModelCapabilitiesForTests();
 	resetSettingsStateForTests();
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
+});
+
+it('rejects an image from the previous game after import even when message IDs match', async () => {
+	clearModelCapabilitiesForTests();
+	const settings = defaultSettings();
+	settings.providers.venice!.image_model = 'fixture-image-model';
+	saveSettings(settings);
+	await setApiKey('venice', 'test-key');
+	const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlS8AAAAASUVORK5CYII=', 'base64');
+	const started = deferred();
+	const finish = deferred();
+	vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+		if (new URL(String(url)).pathname.endsWith('/models')) {
+			return Response.json({ data: [{ id: 'fixture-image-model', model_spec: { type: 'image', constraints: {} } }] });
+		}
+		if (!String(url).endsWith('/image/generate')) throw new Error('Unexpected endpoint');
+		started.resolve();
+		await finish.promise;
+		return Response.json({ images: [bytes.toString('base64')] });
+	}));
+	const message = newMessage({ role: 'assistant', content: 'Old scene' });
+	const oldSession = new Session({ messages: [message] });
+	setSession(oldSession);
+	oldSession.save();
+	const { POST: generate } = await import('../src/routes/messages/[index]/media/+server');
+	const pending = generate({ params: { index: '0' }, request: new Request('http://localhost/messages/0/media', {
+		method: 'POST', headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ kind: 'image', text: 'Old scene', message_id: message.id })
+	}) } as never);
+	try {
+		await started.promise;
+		const { POST: importGame } = await import('../src/routes/import/+server');
+		const result = await importGame({ request: new Request('http://localhost/import', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ confirm: true, data: {
+				version: 2, messages: [message], narrator_start: 0,
+				summary_checkpoints: [], last_narrator_prompt_tokens: null,
+				player_character_description: 'New hero', world_description: 'New world'
+			} })
+		}) } as never);
+		expect(result.status).toBe(200);
+		expect(getSession()).not.toBe(oldSession);
+	} finally {
+		finish.resolve();
+	}
+	const response = await pending;
+	expect(response.status).toBe(409);
+	expect(await response.json()).toEqual({ detail: 'game changed during generation' });
+	expect(getSession().media).toEqual([]);
+	expect(fs.readdirSync(imagesDir())).toEqual([]);
+	expect(pendingMediaFiles.size).toBe(0);
 });
 
 function deferred() {

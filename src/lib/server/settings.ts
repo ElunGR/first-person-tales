@@ -10,6 +10,8 @@ import * as config from './config';
 import { getApiKeyStatus, type KeySource, type ProviderName } from './keyring';
 import { dataDir } from './paths';
 import { utcStamp } from './time';
+import { writeAllBytes } from './mediaIo';
+import { DEFAULT_IMAGE_STYLE, IMAGE_STYLES, isImageStyle } from '$lib/imageStyles';
 import {
 	DEFAULT_TRANSLATION_LANGUAGE,
 	isTranslationLanguage,
@@ -37,6 +39,7 @@ export const AppSettingsSchema = z.strictObject({
 	narrator_max_tokens: z.number().int().min(16).max(8192).default(config.NARRATOR_MAX_COMPLETION_TOKENS),
 	narrator_top_p: z.number().min(0.01).max(1).default(config.NARRATOR_TOP_P),
 	translation_language: z.enum(TRANSLATION_LANGUAGES).default(DEFAULT_TRANSLATION_LANGUAGE),
+	image_style: z.enum(IMAGE_STYLES).default(DEFAULT_IMAGE_STYLE),
 	providers: z.record(z.literal('venice'), ProviderSettingsSchema).default({})
 });
 export type AppSettings = z.infer<typeof AppSettingsSchema>;
@@ -151,6 +154,9 @@ function veniceFromRaw(data: unknown): AppSettings {
 		clean['translation_language'] = translationLanguage;
 	}
 
+	const imageStyle = raw['image_style'];
+	if (isImageStyle(imageStyle)) clean['image_style'] = imageStyle;
+
 	const providersRaw = raw['providers'];
 	if (isPlainObject(providersRaw)) {
 		const veniceRaw = providersRaw['venice'];
@@ -215,7 +221,7 @@ export function saveSettings(settings: AppSettings): void {
 	try {
 		const fd = fs.openSync(tmpName, 'w');
 		try {
-			fs.writeSync(fd, payload, undefined, 'utf-8');
+			writeAllBytes(fd, Buffer.from(payload, 'utf-8'));
 			fs.fsyncSync(fd);
 		} finally {
 			fs.closeSync(fd);

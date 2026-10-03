@@ -47,6 +47,22 @@ beforeEach(() => {
 });
 
 describe('narrator context building', () => {
+	it('keeps narrator and image rewrite messages independent of image style settings', () => {
+		const session = new Session({ messages: [newMessage({ role: 'assistant', content: 'A stone bridge.' })] });
+		const settings = loadSettings();
+		settings.image_style = 'none';
+		saveSettings(settings);
+		const narrator = buildNarratorMessages(session);
+		const rewrite = buildImageRewriteMessages(session, 0, 'the bridge');
+
+		settings.image_style = 'anime';
+		saveSettings(settings);
+
+		expect(buildNarratorMessages(session)).toEqual(narrator);
+		expect(buildImageRewriteMessages(session, 0, 'the bridge')).toEqual(rewrite);
+		expect(JSON.stringify(rewrite)).not.toContain('Style: anime');
+	});
+
 	it('uses the compact window after a summary branch', () => {
 		const s = new Session({
 			messages: [

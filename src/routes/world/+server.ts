@@ -1,19 +1,31 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { apiHandler, parseBody } from '$lib/server/api';
+import { HttpError } from '$lib/server/http';
+import { sessionLock } from '$lib/server/lock';
+import { WorldDescriptionSchema } from '$lib/server/models';
 import { getWorldDescription, saveWorldDescription } from '$lib/server/prompts';
+import { getGameRevision, getSession } from '$lib/server/session';
 
 const WorldUpdateSchema = z.strictObject({
-	content: z.string().max(10000)
+	content: WorldDescriptionSchema,
+	game_revision: z.string().optional()
 });
 
-/** Return only the optional editable world description. */
 export const GET = apiHandler(async () => {
-	return json({ content: getWorldDescription() });
+	return json(await sessionLock.runExclusive(() => ({
+		content: getWorldDescription(), game_revision: getGameRevision()
+	})));
 });
 
-/** Persist the optional world description; blank content removes the override. */
+/** Blank explicitly clears the world, including a nonempty public default. */
 export const PUT = apiHandler(async ({ request }) => {
+	const targetSession = getSession();
 	const body = await parseBody(request, WorldUpdateSchema);
-	return json({ content: saveWorldDescription(body.content) });
+	return json(await sessionLock.runExclusive(() => {
+		if (getSession() !== targetSession || (body.game_revision !== undefined && body.game_revision !== getGameRevision())) {
+			throw new HttpError(409, 'Game changed; reopen the world editor before saving');
+		}
+		return { content: saveWorldDescription(body.content), game_revision: getGameRevision() };
+	}));
 });

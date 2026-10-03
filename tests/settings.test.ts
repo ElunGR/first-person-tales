@@ -43,6 +43,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	setCredentialStoreForTests(undefined);
 	resetSettingsStateForTests();
 	vi.unstubAllEnvs();
@@ -55,7 +56,8 @@ describe('settings recovery', () => {
 		expect(settings.narrator_temperature).toBeCloseTo(0.75);
 		expect(settings.narrator_max_tokens).toBe(8000);
 		expect(settings.translation_language).toBe('Russian');
-		expect(providerSettings(settings).text_model).toBe('aion-labs-aion-3-0');
+		expect(settings.image_style).toBe('none');
+		expect(providerSettings(settings).text_model).toBe('aion-labs-aion-3-5');
 		expect(providerSettings(settings).image_model).toBe('krea-2-turbo');
 	});
 
@@ -93,8 +95,16 @@ describe('settings recovery', () => {
 
 		const settings = loadSettings();
 		expect(settings.narrator_temperature).toBeCloseTo(0.75);
-		expect(providerSettings(settings).text_model).toBe('aion-labs-aion-3-0');
+		expect(providerSettings(settings).text_model).toBe('aion-labs-aion-3-5');
 		expect(providerSettings(settings).image_model).toBe('krea-2-turbo');
+	});
+
+	it('preserves an explicitly saved Aion 3.0 selection after the default changes', () => {
+		const settings = loadSettings();
+		settings.providers.venice = { text_model: 'aion-labs-aion-3-0', image_model: 'krea-2-turbo' };
+		saveSettings(settings);
+		resetSettingsStateForTests();
+		expect(providerSettings(loadSettings()).text_model).toBe('aion-labs-aion-3-0');
 	});
 
 	it('explicitly unselected models remain unselected', () => {
@@ -112,13 +122,16 @@ describe('settings recovery', () => {
 		settings.providers['venice'] = { text_model: 'llama', image_model: 'flux' };
 		settings.narrator_temperature = 1.1;
 		settings.translation_language = 'Korean';
+		settings.image_style = 'anime';
 		saveSettings(settings);
+		resetSettingsStateForTests();
 
 		const reloaded = loadSettings();
 		expect(providerSettings(reloaded).text_model).toBe('llama');
 		expect(providerSettings(reloaded).image_model).toBe('flux');
 		expect(reloaded.narrator_temperature).toBeCloseTo(1.1);
 		expect(reloaded.translation_language).toBe('Korean');
+		expect(reloaded.image_style).toBe('anime');
 	});
 
 	it('removes the temporary settings file when atomic replace fails', () => {
@@ -133,6 +146,68 @@ describe('settings recovery', () => {
 			.toEqual([]);
 	});
 });
+describe('image style settings', () => {
+	it.each([{}, { image_style: 'unknown' }, { image_style: 42 }])(
+		'loads old or unsupported style settings without losing model selection: %j', (fields) => {
+			fs.mkdirSync(dataDir(), { recursive: true });
+			fs.writeFileSync(settingsPath(), JSON.stringify({
+				...fields,
+				providers: { venice: { image_model: 'saved-image-model' } }
+			}), 'utf-8');
+
+			const settings = loadSettings();
+			expect(settings.image_style).toBe('none');
+			expect(providerSettings(settings).image_model).toBe('saved-image-model');
+			expect(fs.existsSync(settingsPath())).toBe(true);
+		}
+	);
+
+	it('saves and exposes the style through the settings API', async () => {
+		const { PUT, GET } = await import('../src/routes/settings/+server');
+		const result = await PUT({ request: new Request('http://localhost/settings', {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ providers: {}, image_style: 'watercolor' })
+		}) } as never);
+
+		expect(result.status).toBe(200);
+		expect((await result.json()).image_style).toBe('watercolor');
+		resetSettingsStateForTests();
+		expect(loadSettings().image_style).toBe('watercolor');
+		const fetched = await GET({} as never);
+		expect((await fetched.json()).image_style).toBe('watercolor');
+	});
+
+	it('keeps the saved style for an older client that omits it and can explicitly disable it', async () => {
+		const settings = loadSettings();
+		settings.image_style = 'anime';
+		saveSettings(settings);
+		const { PUT } = await import('../src/routes/settings/+server');
+		for (const [fields, expected] of [[{}, 'anime'], [{ image_style: 'none' }, 'none']] as const) {
+			const result = await PUT({ request: new Request('http://localhost/settings', {
+				method: 'PUT', headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ providers: {}, ...fields })
+			}) } as never);
+			expect(result.status).toBe(200);
+			expect((await result.json()).image_style).toBe(expected);
+			expect(loadSettings().image_style).toBe(expected);
+		}
+	});
+
+	it('rejects an unsupported API style without changing saved settings', async () => {
+		const settings = loadSettings();
+		settings.image_style = 'anime';
+		saveSettings(settings);
+		const { PUT } = await import('../src/routes/settings/+server');
+		const result = await PUT({ request: new Request('http://localhost/settings', {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ providers: {}, image_style: 'unknown' })
+		}) } as never);
+
+		expect(result.status).toBe(422);
+		expect(loadSettings().image_style).toBe('anime');
+	});
+});
+
 describe('keyring status handling', () => {
 	it('reports keychain when a key is stored', async () => {
 		const keyring = new FakeStore();
@@ -258,6 +333,72 @@ describe('keyring status handling', () => {
 
 		expect(await getApiKeyStatus('venice')).toBe('storage_unavailable');
 		expect(await getApiKey('venice')).toBe('');
+	});
+});
+
+describe('settings route concurrency', () => {
+	it('serializes a delayed credential save with later style updates and reads', async () => {
+		const credentials = new FakeStore();
+		let releaseKey!: () => void;
+		let keyStarted!: () => void;
+		const started = new Promise<void>((resolve) => { keyStarted = resolve; });
+		const gate = new Promise<void>((resolve) => { releaseKey = resolve; });
+		setCredentialStoreForTests({
+			getPassword: (account) => credentials.getPassword(account),
+			deletePassword: (account) => credentials.deletePassword(account),
+			setPassword: async (account, password) => {
+				keyStarted();
+				await gate;
+				await credentials.setPassword(account, password);
+			}
+		});
+		const { PUT, GET } = await import('../src/routes/settings/+server');
+		const request = (fields: Record<string, unknown>) => new Request('http://localhost/settings', {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields)
+		});
+		const first = PUT({ request: request({
+			providers: { venice: { text_model: 'first-narrator' } }, image_style: 'anime', api_key: 'fixture-key'
+		}) } as never);
+		await started;
+		let laterCompleted = false;
+		const secondRequest = request({ providers: { venice: { image_model: 'later-image' } }, image_style: 'watercolor' });
+		const parsed = vi.spyOn(secondRequest, 'json');
+		const second = Promise.resolve(PUT({ request: secondRequest } as never))
+			.then((result) => { laterCompleted = true; return result; });
+		try {
+			await vi.waitFor(() => expect(parsed).toHaveBeenCalled());
+			expect(laterCompleted).toBe(false);
+			expect(loadSettings().image_style).toBe('none');
+		} finally {
+			releaseKey();
+		}
+		const [firstResponse, secondResponse] = await Promise.all([first, second]);
+		const readResponse = await GET({} as never);
+		expect(firstResponse.status).toBe(200);
+		expect(secondResponse.status).toBe(200);
+		expect((await firstResponse.json()).image_style).toBe('anime');
+		expect((await secondResponse.json()).image_style).toBe('watercolor');
+		expect((await readResponse.json()).image_style).toBe('watercolor');
+		const settings = loadSettings();
+		expect(settings.image_style).toBe('watercolor');
+		expect(providerSettings(settings)).toEqual({ text_model: 'first-narrator', image_model: 'later-image' });
+	});
+
+	it('releases the settings lock after a credential write failure', async () => {
+		setCredentialStoreForTests({
+			getPassword: async () => null,
+			deletePassword: async () => false,
+			setPassword: async () => { throw new Error('fixture credential storage unavailable'); }
+		});
+		const { PUT } = await import('../src/routes/settings/+server');
+		const request = (fields: Record<string, unknown>) => new Request('http://localhost/settings', {
+			method: 'PUT', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ providers: {}, ...fields })
+		});
+		expect((await PUT({ request: request({ api_key: 'fixture-key', image_style: 'anime' }) } as never)).status).toBe(503);
+		const retry = await PUT({ request: request({ image_style: 'watercolor' }) } as never);
+		expect(retry.status).toBe(200);
+		expect(loadSettings().image_style).toBe('watercolor');
 	});
 });
 

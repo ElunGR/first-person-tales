@@ -1,6 +1,7 @@
 /** Reactive controller for the local single-player page. */
 import type { SettingsFormValues } from '$lib/components/SettingsModal.svelte';
-import { api, isAbortError } from './api';
+import { DEFAULT_IMAGE_STYLE, type ImageStyle } from '$lib/imageStyles';
+import { api, ApiError, isAbortError } from './api';
 import { mergeReused, sameMedia, sameMessage } from './state';
 import { toast } from './toast.svelte';
 import type { MediaRecord, Message, ModelCatalogs, SettingsPayload, StatePayload } from './types';
@@ -11,6 +12,11 @@ const TOKEN_NUMBER = new Intl.NumberFormat('en-US');
 interface StoryResultPayload {
 	message?: Message;
 	state?: StatePayload;
+}
+
+interface DescriptionPayload {
+	content: string;
+	game_revision?: string;
 }
 
 export interface ContextLabel {
@@ -27,6 +33,8 @@ export class GamePageController {
 	recoveryMessage = $state<string | null>(null);
 
 	busy = $state(false);
+	/** A lost import response may hide a committed game switch; only browser reload clears this latch. */
+	requiresReload = $state(false);
 	statusText = $state('Ready');
 	abortController = $state<AbortController | null>(null);
 	operationId = $state<string | null>(null);
@@ -41,12 +49,15 @@ export class GamePageController {
 	settingsOpen = $state(false);
 	characterOpen = $state(false);
 	characterText = $state('');
+	characterGameRevision = $state<string | undefined>(undefined);
 	worldOpen = $state(false);
 	worldText = $state('');
+	worldGameRevision = $state<string | undefined>(undefined);
 	mediaOpen = $state(false);
 	mediaTargetIndex = $state<number | null>(null);
 	mediaPreparing = $state(false);
 	mediaPreparedText = $state('');
+	mediaImageStyle = $state<ImageStyle>(DEFAULT_IMAGE_STYLE);
 
 	mediaByMessage = $derived.by(() => {
 		const map = new Map<string, MediaRecord[]>();
@@ -95,7 +106,16 @@ export class GamePageController {
 	}
 
 	async initialize(): Promise<void> {
-		await Promise.all([this.loadState(), this.loadSettings()]);
+		if (this.busy) return;
+		this.setBusy(true, 'Loading game…');
+		try {
+			// Do not unlock when one request rejects while the other can still apply stale state.
+			const results = await Promise.allSettled([this.loadState(), this.loadSettings()]);
+			const failure = results.find((result) => result.status === 'rejected');
+			if (failure?.status === 'rejected') throw failure.reason;
+		} finally {
+			this.setBusy(false);
+		}
 	}
 
 	private async loadState(): Promise<void> {
@@ -136,6 +156,11 @@ export class GamePageController {
 	}
 
 	private setBusy(value: boolean, text = ''): void {
+		if (this.requiresReload) {
+			this.busy = true;
+			this.statusText = 'Import outcome unknown — reload the page';
+			return;
+		}
 		this.busy = value;
 		this.statusText = value ? text : 'Ready';
 	}
@@ -396,22 +421,73 @@ export class GamePageController {
 	}
 
 	async downloadHistory(format: 'json' | 'markdown'): Promise<void> {
-		const response = await fetch(`/export?format=${encodeURIComponent(format)}`);
-		if (!response.ok) throw new Error('Could not export history');
-		const blob = await response.blob();
-		const url = URL.createObjectURL(blob);
-		const anchor = document.createElement('a');
-		anchor.href = url;
-		anchor.download = format === 'markdown' ? 'history.md' : 'history.json';
-		anchor.click();
-		URL.revokeObjectURL(url);
+		if (this.busy) return;
+		this.setBusy(true, format === 'json' ? 'Exporting game save…' : 'Exporting read-only transcript…');
+		let downloadUrl: string | null = null;
+		try {
+			const response = await fetch(`/export?format=${encodeURIComponent(format)}`);
+			if (!response.ok) throw new Error('Could not export game');
+			const blob = await response.blob();
+			downloadUrl = URL.createObjectURL(blob);
+			const anchor = document.createElement('a');
+			anchor.href = downloadUrl;
+			anchor.download = format === 'markdown' ? 'history.md' : 'history.json';
+			anchor.click();
+		} finally {
+			try {
+				if (downloadUrl !== null) URL.revokeObjectURL(downloadUrl);
+			} finally {
+				this.setBusy(false);
+			}
+		}
 	}
 
 	async importHistory(file: File): Promise<void> {
-		const raw = JSON.parse(await file.text());
-		if (!confirm('Import will replace the current history. A backup will be created first. Continue?')) return;
-		this.applyState(await api<StatePayload>('/import', { method: 'POST', body: { confirm: true, data: raw } }));
-		toast('History imported');
+		if (this.busy) return;
+		this.setBusy(true, 'Reading game save…');
+		try {
+			const raw: unknown = JSON.parse(await file.text());
+			if (typeof raw !== 'object' || raw === null || Array.isArray(raw) ||
+				!('version' in raw) || (raw.version !== 1 && raw.version !== 2)) {
+				throw new Error('Unsupported game save version; choose a JSON save with version 1 or 2');
+			}
+			const replacement = raw.version === 2
+				? 'Import will replace the current history, character description, and world description.'
+				: 'Import will replace the current history. This older version 1 save leaves the character and world descriptions unchanged.';
+			if (!confirm(
+				`${replacement}\n\n` +
+				'Export the current game as JSON first if you want to keep it. A backup will be created before import.\n\n' +
+				'Current images will be deleted and cannot be restored from the JSON save or backup; images are not included. Continue?'
+			)) return;
+			this.statusText = 'Importing game…';
+			let state: StatePayload;
+			try {
+				state = await api<StatePayload>('/import', { method: 'POST', body: { confirm: true, data: raw } });
+				if (!state || !Array.isArray(state.messages) || !Array.isArray(state.media)) {
+					throw new Error('Invalid game state in the import response');
+				}
+			} catch (err) {
+				if (err instanceof ApiError && err.status >= 400 && err.status < 500) throw err;
+				// A 5xx can occur after commit too. Keep drafts, but block moves into a possibly imported game.
+				this.requiresReload = true;
+				throw new Error(`${(err as Error).message} Reload the page to verify which game is active; game actions are blocked until reload. Do not retry import automatically.`);
+			}
+			this.applyState(state);
+			this.editingMessageId = null;
+			this.inputDraft = '';
+			this.characterOpen = false;
+			this.characterText = '';
+			this.characterGameRevision = undefined;
+			this.worldOpen = false;
+			this.worldText = '';
+			this.worldGameRevision = undefined;
+			this.closeMedia();
+			this.mediaPreparedText = '';
+			this.mediaPreparing = false;
+			toast('Game imported');
+		} finally {
+			this.setBusy(false);
+		}
 	}
 
 	private async persistSettings(values: SettingsFormValues, closeAfter = true, notify = true): Promise<void> {
@@ -423,6 +499,7 @@ export class GamePageController {
 			narrator_presence_penalty: values.narrator_presence_penalty,
 			narrator_max_tokens: values.narrator_max_tokens,
 			translation_language: values.translation_language,
+			image_style: values.image_style,
 			providers: { venice: { text_model: values.text_model, image_model: values.image_model } },
 			api_key: values.api_key || null
 		};
@@ -431,8 +508,16 @@ export class GamePageController {
 		if (notify) toast('Settings saved');
 	}
 
-	saveSettings(values: SettingsFormValues): void {
-		this.persistSettings(values).catch((err) => toast(`Could not save settings: ${(err as Error).message}`, 'err'));
+	async saveSettings(values: SettingsFormValues): Promise<void> {
+		if (this.busy) return;
+		this.setBusy(true, 'Saving settings…');
+		try {
+			await this.persistSettings(values);
+		} catch (err) {
+			toast(`Could not save settings: ${(err as Error).message}`, 'err');
+		} finally {
+			this.setBusy(false);
+		}
 	}
 
 	async openCharacter(): Promise<void> {
@@ -440,8 +525,9 @@ export class GamePageController {
 		this.characterOpen = false;
 		this.setBusy(true, 'Loading character…');
 		try {
-			const data = await api<{ content: string }>('/character');
+			const data = await api<DescriptionPayload>('/character');
 			this.characterText = data.content;
+			this.characterGameRevision = data.game_revision;
 			this.characterOpen = true;
 		} catch (err) {
 			this.characterOpen = false;
@@ -455,8 +541,11 @@ export class GamePageController {
 		if (this.busy) return;
 		this.setBusy(true, 'Saving character…');
 		try {
-			const data = await api<{ content: string }>('/character', { method: 'PUT', body: { content } });
+			const data = await api<DescriptionPayload>('/character', {
+				method: 'PUT', body: { content, game_revision: this.characterGameRevision }
+			});
 			this.characterText = data.content;
+			this.characterGameRevision = data.game_revision;
 			this.characterOpen = false;
 			toast('Character saved');
 		} catch (err) {
@@ -471,8 +560,9 @@ export class GamePageController {
 		this.worldOpen = false;
 		this.setBusy(true, 'Loading world…');
 		try {
-			const data = await api<{ content: string }>('/world');
+			const data = await api<DescriptionPayload>('/world');
 			this.worldText = data.content;
+			this.worldGameRevision = data.game_revision;
 			this.worldOpen = true;
 		} catch (err) {
 			this.worldOpen = false;
@@ -486,8 +576,11 @@ export class GamePageController {
 		if (this.busy) return;
 		this.setBusy(true, 'Saving world…');
 		try {
-			const data = await api<{ content: string }>('/world', { method: 'PUT', body: { content } });
+			const data = await api<DescriptionPayload>('/world', {
+				method: 'PUT', body: { content, game_revision: this.worldGameRevision }
+			});
 			this.worldText = data.content;
+			this.worldGameRevision = data.game_revision;
 			this.worldOpen = false;
 			toast(data.content ? 'World saved' : 'World description removed');
 		} catch (err) {
@@ -519,10 +612,19 @@ export class GamePageController {
 		}
 	}
 
-	openMedia(index: number): void {
-		if (!this.busy) {
+	async openMedia(index: number): Promise<void> {
+		if (this.busy) return;
+		this.closeMedia();
+		this.setBusy(true, 'Loading image settings…');
+		try {
+			await this.loadSettings();
+			this.mediaImageStyle = this.settings!.image_style;
 			this.mediaTargetIndex = index;
 			this.mediaOpen = true;
+		} catch (err) {
+			toast(`Could not load image settings: ${(err as Error).message}`, 'err');
+		} finally {
+			this.setBusy(false);
 		}
 	}
 
@@ -559,7 +661,7 @@ export class GamePageController {
 		try {
 			this.applyState(await api<StatePayload>(`/messages/${targetIndex}/media`, {
 				method: 'POST',
-				body: { kind: 'image', text, message_id: this.messages[targetIndex]?.id ?? null },
+				body: { kind: 'image', text, image_style: this.mediaImageStyle, message_id: this.messages[targetIndex]?.id ?? null },
 				signal: controller.signal,
 				operationId: this.operationId
 			}));

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ModalFrame from './ModalFrame.svelte';
+	import { MAX_DESCRIPTION_CHARS } from '$lib/descriptions';
 
 	let {
 		open,
@@ -36,7 +37,7 @@
 			<textarea
 				data-modal-autofocus
 				rows="16"
-				maxlength="10000"
+				maxlength={MAX_DESCRIPTION_CHARS}
 				bind:value={content}
 			></textarea>
 		</label>

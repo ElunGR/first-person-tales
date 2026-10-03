@@ -54,6 +54,7 @@ export interface SettingsPayload {
 	narrator_max_tokens: number;
 	narrator_top_p: number;
 	translation_language: import('$lib/translationLanguages').TranslationLanguage;
+	image_style: import('$lib/imageStyles').ImageStyle;
 	providers: Record<string, { text_model?: string; image_model?: string }>;
 	key_configured?: Record<string, boolean>;
 	key_source?: Record<string, KeySource>;

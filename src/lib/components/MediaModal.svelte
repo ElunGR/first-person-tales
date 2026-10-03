@@ -1,9 +1,11 @@
 <script lang="ts">
 	import ModalFrame from './ModalFrame.svelte';
+	import { DEFAULT_IMAGE_STYLE, type ImageStyle } from '$lib/imageStyles';
 	let {
 		open,
 		busy,
 		preparing,
+		imageStyle = DEFAULT_IMAGE_STYLE,
 		preparedText = $bindable(''),
 		onClose,
 		onPrepare,
@@ -12,6 +14,7 @@
 		open: boolean;
 		busy: boolean;
 		preparing: boolean;
+		imageStyle?: ImageStyle;
 		preparedText: string;
 		onClose: () => void;
 		onPrepare: (instruction: string) => void;
@@ -38,6 +41,9 @@
 		</label>
 		<label><span>Image prompt</span>
 			<textarea rows="10" maxlength="10000" bind:value={preparedText}></textarea>
+			<span class="capability-note">{imageStyle === 'none'
+					? 'No style is added. Choose an image style in Settings → Media.'
+					: `Style: ${imageStyle} will be appended when generating. Change it in Settings → Media.`}</span>
 		</label>
 	{/snippet}
 	{#snippet footer()}

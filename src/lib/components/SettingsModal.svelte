@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ModalFrame from './ModalFrame.svelte';
 	import type { ModelCatalogs, SettingsPayload } from '$lib/frontend/types';
+	import { DEFAULT_IMAGE_STYLE, IMAGE_STYLES, IMAGE_STYLE_LABELS, type ImageStyle } from '$lib/imageStyles';
 	import {
 		DEFAULT_TRANSLATION_LANGUAGE,
 		TRANSLATION_LANGUAGES,
@@ -16,6 +17,7 @@
 		translation_language: TranslationLanguage;
 		text_model: string;
 		image_model: string;
+		image_style: ImageStyle;
 		api_key: string;
 	}
 
@@ -42,6 +44,7 @@
 	let apiKey = $state('');
 	let textModel = $state('');
 	let imageModel = $state('');
+	let imageStyle = $state<ImageStyle>(DEFAULT_IMAGE_STYLE);
 	let temperature = $state(0.75);
 	let topP = $state(0.95);
 	let frequencyPenalty = $state(0.35);
@@ -61,6 +64,7 @@
 		translationLanguage = settings.translation_language;
 		textModel = cfg.text_model || '';
 		imageModel = cfg.image_model || '';
+		imageStyle = settings.image_style ?? DEFAULT_IMAGE_STYLE;
 		apiKey = '';
 	});
 
@@ -124,6 +128,7 @@
 			translation_language: translationLanguage,
 			text_model: textModel,
 			image_model: imageModel,
+			image_style: imageStyle,
 			api_key: apiKey.trim()
 		};
 	}
@@ -194,6 +199,13 @@
 								<option value={row.id}>{row.name === row.id ? row.id : `${row.name} — ${row.id}`}</option>
 							{/each}
 						</select><span class="capability-note">{imageCapability}</span></label>
+					<label>Image style<select bind:value={imageStyle}>
+							{#each IMAGE_STYLES as style}
+								<option value={style}>{IMAGE_STYLE_LABELS[style]}</option>
+							{/each}
+						</select><span class="capability-note">{imageStyle === 'none'
+								? 'Use the image prompt as written'
+								: `Appends "Style: ${imageStyle}" to the image prompt`}</span></label>
 				</div>
 			</section>
 		{/if}

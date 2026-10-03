@@ -95,11 +95,15 @@
 					tabindex="-1"
 					onkeydown={menuItemKeydown}
 				>
-					<button class="ghost" type="button" role="menuitem" onclick={() => clickItem(onExportJson)}
-						>Export JSON</button>
-					<button class="ghost" type="button" role="menuitem" onclick={() => clickItem(onExportMarkdown)}
-						>Export Markdown</button>
-					<button class="ghost" type="button" role="menuitem" onclick={() => clickItem(onImport)}>Import</button>
+					<button class="ghost" type="button" role="menuitem" disabled={busy}
+						title="Save history, character and world as JSON. Images are not included."
+						onclick={() => clickItem(onExportJson)}>Export JSON save</button>
+					<button class="ghost" type="button" role="menuitem" disabled={busy}
+						title="Read-only Markdown transcript; not an importable game save."
+						onclick={() => clickItem(onExportMarkdown)}>Export Markdown (read-only)</button>
+					<button class="ghost" type="button" role="menuitem" disabled={busy}
+						title="Import a JSON save. Export the current game first; current images will be deleted and are not restored."
+						onclick={() => clickItem(onImport)}>Import JSON save</button>
 				</div>
 			{/if}
 		</div>

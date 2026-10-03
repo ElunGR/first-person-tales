@@ -4,6 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 import { localPromptsPath, promptsPath } from './paths';
+import { assertNoPendingGameImport } from './gameImportTransaction';
+import { normalizeUserDescription } from '$lib/descriptions';
+import { writeAllBytes } from './mediaIo';
+export { normalizeUserDescription } from '$lib/descriptions';
 
 const PROMPTS_NAME = 'prompts.yaml';
 const LOCAL_PROMPTS_NAME = 'prompts.local.yaml';
@@ -15,11 +19,18 @@ let cache: Map<string, string> | null = null;
 let cacheSignature: string | null = null;
 
 function loadRaw(filePath: string, fileName: string, optional = false): Record<string, unknown> {
-	if (!fs.existsSync(filePath)) {
-		if (optional) return {};
-		throw new Error(`Missing ${fileName}`);
+	let text: string;
+	try {
+		text = fs.readFileSync(filePath, 'utf-8');
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+			if (optional) return {};
+			throw new Error(`Missing ${fileName}`);
+		}
+		// Do not substitute public defaults or echo private text after access errors.
+		throw new Error(`Could not read ${fileName}`);
 	}
-	const data: unknown = YAML.parse(fs.readFileSync(filePath, 'utf-8')) ?? {};
+	const data: unknown = YAML.parse(text) ?? {};
 	if (typeof data !== 'object' || data === null || Array.isArray(data)) {
 		throw new Error(`${fileName} must be a mapping of name -> text`);
 	}
@@ -50,13 +61,15 @@ function fileSignature(filePath: string): string {
 	try {
 		const stats = fs.statSync(filePath);
 		return `${filePath}:${stats.mtimeMs}:${stats.size}`;
-	} catch {
-		return `${filePath}:missing`;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return `${filePath}:missing`;
+		throw new Error('Could not check prompt file access');
 	}
 }
 
 /** Return all prompts, reloading when either public or private prompt data changes. */
 export function loadPrompts(force = false): Map<string, string> {
+	assertNoPendingGameImport();
 	const filePath = promptsPath();
 	const localFilePath = localPromptsPath();
 	const signature = `${fileSignature(filePath)}\n${fileSignature(localFilePath)}`;
@@ -94,11 +107,6 @@ export function formatPrompt(name: string, kwargs: Record<string, unknown>): str
 	return text;
 }
 
-/** Reserve Markdown H1 for application-owned system sections. */
-export function normalizeUserDescription(content: string): string {
-	return content.trim().replace(/^([ \t]{0,3})#(?=[ \t]|$)/gm, '$1##');
-}
-
 export function getPlayerCharacterDescription(): string {
 	const content = normalizeUserDescription(getPrompt(PLAYER_DESCRIPTION_KEY));
 	if (!content) throw new Error('player character description is empty');
@@ -132,7 +140,7 @@ function writeLocalDescriptions(local: Record<string, string>): void {
 	const ordered: Record<string, string> = {};
 	for (const key of LOCAL_DESCRIPTION_KEYS) {
 		const value = local[key];
-		if (typeof value === 'string' && value) ordered[key] = value;
+		if (typeof value === 'string') ordered[key] = value;
 	}
 
 	if (Object.keys(ordered).length === 0) {
@@ -149,7 +157,7 @@ function writeLocalDescriptions(local: Record<string, string>): void {
 	try {
 		const fd = fs.openSync(temporary, 'w');
 		try {
-			fs.writeSync(fd, YAML.stringify(ordered), undefined, 'utf-8');
+			writeAllBytes(fd, Buffer.from(YAML.stringify(ordered), 'utf-8'));
 			fs.fsyncSync(fd);
 		} finally {
 			fs.closeSync(fd);
@@ -167,17 +175,18 @@ function writeLocalDescriptions(local: Record<string, string>): void {
 }
 
 function saveDescription(key: (typeof LOCAL_DESCRIPTION_KEYS)[number], content: string): string {
+	assertNoPendingGameImport();
 	const local = loadRaw(localPromptsPath(), LOCAL_PROMPTS_NAME, true);
 	validateLocalDescriptions(local);
 	const normalized = normalizeUserDescription(content);
 	const next: Record<string, string> = {};
 	for (const allowedKey of LOCAL_DESCRIPTION_KEYS) {
 		const existing = local[allowedKey];
-		if (typeof existing === 'string' && existing.trim()) {
+		if (typeof existing === 'string') {
 			next[allowedKey] = normalizeUserDescription(existing);
 		}
 	}
-	if (normalized) next[key] = normalized;
+	if (normalized || key === WORLD_DESCRIPTION_KEY) next[key] = normalized;
 	else delete next[key];
 	writeLocalDescriptions(next);
 	return normalized;
@@ -191,4 +200,14 @@ export function savePlayerCharacterDescription(content: string): string {
 
 export function saveWorldDescription(content: string): string {
 	return saveDescription(WORLD_DESCRIPTION_KEY, content);
+}
+
+/** Replace both editable descriptions, including an explicit empty world. */
+export function serializeGameDescriptions(character: string, world: string): string {
+	const normalizedCharacter = normalizeUserDescription(character);
+	if (!normalizedCharacter) throw new Error('Character must not be empty');
+	return YAML.stringify({
+		[PLAYER_DESCRIPTION_KEY]: normalizedCharacter,
+		[WORLD_DESCRIPTION_KEY]: normalizeUserDescription(world)
+	});
 }

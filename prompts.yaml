@@ -1,7 +1,7 @@
 # All LLM prompts for First Person Tales. Edit freely — no code changes needed.
 
 narrator: |
-  You are a roleplay narrator and Game Master running an immersive fictional scenario.
+  You are a role-play narrator and Game Master running an immersive fictional scenario.
 
   # Terms
   OOC – out-of-character
@@ -107,7 +107,7 @@ image_prompt_rewrite: |
   Task: Generate a single, ready-to-use image prompt for a given SUBJECT, based on a fictional role-play transcript.
 
   # Input
-  - SUBJECT: a person, an item, or a location.
+  - SUBJECT: a person, a group of people, an item, or a location.
   - Active story branch up to the selected scene.
 
   # Output
@@ -119,7 +119,7 @@ image_prompt_rewrite: |
   Narrator is an LLM assistant that writes in 3rd person.
 
   # Structure
-  Start with a shot type (close-up portrait / medium shot / full-body shot / wide establishing shot).
+  Start with a shot type (close-up portrait / medium shot / full-body shot / wide establishing shot). For a group of people, choose a medium shot, full-body shot, or wide establishing shot that clearly shows all participants and their interaction.
 
   # Rules
   - Simple, everyday English. Concrete visual terms. No jargon, metaphors, or abstract language.
@@ -127,14 +127,16 @@ image_prompt_rewrite: |
   - No proper names (characters, places, brands). Replace with visual description.
   - Do not restate these instructions in the output. Write only what IS visible — never negations like "no people" or "without a hat"; use "alone" or "empty room" instead.
   - Take appearance traits from the transcript. Do not invent traits that were never mentioned.
-  - Describe the subject as in the latest scene where it appears. If SUBJECT fits none of the three categories, treat it as an item.
+  - Describe the subject as in the latest scene where it appears. If SUBJECT fits none of the four categories, treat it as an item.
   - Match lighting and tone to that scene.
 
   - Person: appearance, clothing, expression, posture, brief surroundings. One character only. State age in years and gender directly ("a 25-year-old woman", "a man in his late 30s"); all characters are 18 or older, with adult build and adult facial features. Use "man" or "woman", never "girl" or "boy".
+  - Group of people: two or more people in one frame. Apply the Person appearance, age, and gender rules to every participant; all participants are 18 or older, with adult build and adult facial features. Distinguish each participant by visible traits from the transcript, clothing, position in the frame, expression, and posture. Clearly assign traits and actions to each participant. Show who is visibly interacting with whom through concrete gestures, gaze, contact, or an object being passed or shared.
   - Item: shape, material, color, details, in a simple setting (on a table, held in a hand). Clothing goes on a mannequin or laid flat.
   - Location: architecture, lighting, weather, atmosphere. No characters.
 
   # Examples
   Person: "Medium shot of a 25-year-old woman with shoulder-length black hair and blue eyes, sitting up in a narrow hospital bed. She wears an oversized hospital gown that slips off one shoulder. One hand holds a small mirror; her eyes are slightly widened, lips parted. Soft fluorescent light from above, a medical monitor against a pale wall in the background."
+  Group of people: "Medium shot of a 28-year-old woman on the left and a 35-year-old man on the right, both with adult builds and adult facial features, standing across a wooden counter. The woman has shoulder-length dark hair and wears a green wool coat; she extends a small brass key toward the man. The man has short brown hair and a trimmed beard, wears a grey shirt, and holds out his open right hand beneath the key. They look at the key, her eyebrows raised and his lips slightly parted. Warm light from a hanging lamp, wooden shelves in the background."
   Item: "Close-up of a small ornate silver key with a ruby inset, resting on a weathered wooden table. Candlelight flickers nearby, casting a warm glow on the metal. A dimly lit stone room out of focus behind it."
   Location: "Wide establishing shot of a misty abandoned Victorian train station at dawn. Empty tracks stretch into the fog, rusted iron pillars rise from the cracked platform, a single broken clock hangs frozen on the wall. Cool blue and grey tones, soft diffused light."

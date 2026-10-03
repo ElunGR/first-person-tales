@@ -118,6 +118,7 @@
 	open={game.mediaOpen}
 	busy={game.busy}
 	preparing={game.mediaPreparing}
+	imageStyle={game.mediaImageStyle}
 	bind:preparedText={game.mediaPreparedText}
 	onClose={() => game.closeMedia()}
 	onPrepare={(instruction) => game.prepareMedia(instruction)}

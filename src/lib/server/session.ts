@@ -26,6 +26,8 @@ import {
 	validateSessionPayload
 } from './sessionValidation';
 import { utcNowIso } from './time';
+import { assertNoPendingGameImport, recoverPendingGameImport } from './gameImportTransaction';
+import { clearPromptCache } from './prompts';
 
 export { cleanupInvalidSaveBackups, SessionFormatError };
 
@@ -371,18 +373,29 @@ export function validateSessionIntegrity(data: unknown): Session {
 	return new Session(validateSessionPayload(data));
 }
 let currentSession: Session = new Session();
+let currentGameRevision = crypto.randomUUID();
+
+/** Opaque runtime token: stale description editors cannot overwrite a loaded game. */
+export function getGameRevision(): string {
+	assertNoPendingGameImport();
+	return currentGameRevision;
+}
 
 export function getSession(): Session {
+	assertNoPendingGameImport();
 	return currentSession;
 }
 
 export function setSession(newSession: Session): Session {
 	currentSession = newSession;
+	currentGameRevision = crypto.randomUUID();
 	return currentSession;
 }
 
 /** Load data/session.json if present, else start empty (and ensure dirs). */
 export function loadOrCreate(): Session {
+	// Recover BOTH game files before reading either or deleting old media.
+	if (recoverPendingGameImport()) clearPromptCache();
 	recoveryMessageValue = null;
 	const hadSave = fs.existsSync(sessionPath());
 	const loaded = Session.load();

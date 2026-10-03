@@ -117,7 +117,7 @@ describe('character route validation', () => {
 
 		const response = await PUT({ request } as never);
 		expect(response.status).toBe(200);
-		expect(await jsonResponse(response)).toEqual({ content: 'A careful explorer.\n## Skills' });
+		expect(await jsonResponse(response)).toMatchObject({ content: 'A careful explorer.\n## Skills', game_revision: expect.any(String) });
 		expect(fs.readFileSync(path.join(promptRoot.dir(), 'prompts.local.yaml'), 'utf8')).toContain(
 			'player_character_description'
 		);
@@ -156,13 +156,13 @@ describe('world route validation', () => {
 		} as never);
 
 		expect(response.status).toBe(200);
-		expect(await jsonResponse(response)).toEqual({ content: 'A kingdom.\n## Rules' });
+		expect(await jsonResponse(response)).toMatchObject({ content: 'A kingdom.\n## Rules', game_revision: expect.any(String) });
 		const saved = fs.readFileSync(path.join(promptRoot.dir(), 'prompts.local.yaml'), 'utf8');
 		expect(saved).toContain('player_character_description');
 		expect(saved).toContain('world_description');
 	});
 
-	it('accepts a blank world and removes it from local prompts', async () => {
+	it('accepts a blank world and saves an explicit empty description', async () => {
 		const { PUT } = await import('../src/routes/world/+server');
 		await PUT({
 			request: new Request('http://localhost/world', {
@@ -180,7 +180,8 @@ describe('world route validation', () => {
 		} as never);
 
 		expect(response.status).toBe(200);
-		expect(await jsonResponse(response)).toEqual({ content: '' });
-		expect(fs.existsSync(path.join(promptRoot.dir(), 'prompts.local.yaml'))).toBe(false);
+		expect(await jsonResponse(response)).toMatchObject({ content: '', game_revision: expect.any(String) });
+		expect(fs.readFileSync(path.join(promptRoot.dir(), 'prompts.local.yaml'), 'utf8'))
+			.toContain('world_description: ""');
 	});
 });

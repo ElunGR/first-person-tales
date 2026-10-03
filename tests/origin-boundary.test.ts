@@ -4,9 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { newMessage } from '../src/lib/server/models';
 import { sessionPath } from '../src/lib/server/paths';
 import { getSession, Session, setSession } from '../src/lib/server/session';
-import { useTempDataDir } from './helpers';
+import { useTempDataDir, useTempPromptRoot } from './helpers';
 
 useTempDataDir();
+useTempPromptRoot();
 
 async function runThroughHandle(request: Request, resolve = vi.fn(async () => new Response('resolved'))): Promise<{
 	response: Response;

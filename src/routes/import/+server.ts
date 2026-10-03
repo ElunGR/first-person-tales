@@ -1,32 +1,23 @@
-import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { json } from '@sveltejs/kit';
-import { stateResponse } from '$lib/server/api';
-import { apiHandler } from '$lib/server/api';
+import { apiHandler, stateResponse } from '$lib/server/api';
 import { MAX_IMPORT_BODY_BYTES } from '$lib/server/config';
+import { createGameExport } from '$lib/server/gameArchive';
+import { assertNoPendingGameImport, commitGameImport, writeImportFileAtomic } from '$lib/server/gameImportTransaction';
 import { HttpError } from '$lib/server/http';
 import { sessionLock } from '$lib/server/lock';
 import { HistoryExportSchema } from '$lib/server/models';
-import { backupsDir, sessionPath } from '$lib/server/paths';
-import {
-	cleanupUnreferencedMediaFiles,
-	Session,
-	setSession,
-	validateSessionIntegrity
-} from '$lib/server/session';
+import { backupsDir } from '$lib/server/paths';
+import { clearPromptCache, serializeGameDescriptions } from '$lib/server/prompts';
+import { cleanupUnreferencedMediaFiles, getSession, Session, setSession, validateSessionIntegrity } from '$lib/server/session';
 import { utcStamp } from '$lib/server/time';
 
-/** Validate and atomically import a versioned history after explicit confirmation. */
+/** Validate first; back up and restore history plus descriptions as one operation. */
 export const POST = apiHandler(async ({ request }) => {
 	const contentLength = request.headers.get('content-length');
-	let declaredSize: number;
-	if (contentLength) {
-		declaredSize = parseInt(contentLength, 10);
-		if (Number.isNaN(declaredSize)) declaredSize = MAX_IMPORT_BODY_BYTES + 1;
-	} else {
-		declaredSize = 0;
-	}
-	if (declaredSize > MAX_IMPORT_BODY_BYTES) {
+	const declaredSize = contentLength ? Number(contentLength) : 0;
+	if (!Number.isFinite(declaredSize) || declaredSize < 0 || declaredSize > MAX_IMPORT_BODY_BYTES) {
 		throw new HttpError(413, 'import payload is too large');
 	}
 	let body: unknown;
@@ -36,45 +27,24 @@ export const POST = apiHandler(async ({ request }) => {
 			throw new HttpError(413, 'import payload is too large');
 		}
 		body = JSON.parse(rawText);
-	} catch (exc) {
-		if (exc instanceof HttpError) throw exc;
+	} catch (error) {
+		if (error instanceof HttpError) throw error;
 		throw new HttpError(422, 'There was an error parsing the body');
 	}
 	if (typeof body !== 'object' || body === null || Array.isArray(body)) {
 		throw new HttpError(422, 'There was an error parsing the body');
 	}
 	const bodyObj = body as Record<string, unknown>;
-	if (bodyObj['confirm'] !== true) {
-		throw new HttpError(400, 'explicit import confirmation is required');
-	}
-	let raw: unknown = bodyObj['data'];
-	if (raw === null || raw === undefined) {
-		raw = Object.fromEntries(Object.entries(bodyObj).filter(([key]) => key !== 'confirm'));
-	}
-	if (
-		typeof raw !== 'object' ||
-		raw === null ||
-		Array.isArray(raw) ||
-		(raw as Record<string, unknown>)['version'] !== 1 ||
-		typeof (raw as Record<string, unknown>)['version'] === 'boolean'
-	) {
+	if (bodyObj.confirm !== true) throw new HttpError(400, 'explicit import confirmation is required');
+	const raw = bodyObj.data ?? Object.fromEntries(Object.entries(bodyObj).filter(([key]) => key !== 'confirm'));
+	if (typeof raw !== 'object' || raw === null || Array.isArray(raw) ||
+		!([1, 2] as unknown[]).includes((raw as Record<string, unknown>).version)) {
 		throw new HttpError(400, 'unsupported history export version');
 	}
-	const rawObj = raw as Record<string, unknown>;
 	let candidate: Session;
+	let descriptions: string | undefined;
 	try {
-		const keys = Object.keys(rawObj);
-		const expected = [
-			'version',
-			'messages',
-			'narrator_start',
-			'summary_checkpoints',
-			'last_narrator_prompt_tokens'
-		];
-		if (keys.length !== expected.length || !keys.every((key) => expected.includes(key))) {
-			throw new Error('invalid top-level fields');
-		}
-		const exported = HistoryExportSchema.parse(rawObj);
+		const exported = HistoryExportSchema.parse(raw);
 		candidate = validateSessionIntegrity({
 			messages: exported.messages,
 			media: [],
@@ -82,33 +52,36 @@ export const POST = apiHandler(async ({ request }) => {
 			summary_checkpoints: exported.summary_checkpoints,
 			last_narrator_prompt_tokens: exported.last_narrator_prompt_tokens
 		});
-	} catch (exc) {
-		throw new HttpError(400, `invalid history export: ${(exc as Error)?.message ?? exc}`);
+		if (exported.version === 2) {
+			descriptions = serializeGameDescriptions(exported.player_character_description, exported.world_description);
+		}
+	} catch {
+		throw new HttpError(400, 'invalid game export: check its fields, descriptions, message IDs, and summary references');
 	}
 	const state = await sessionLock.runExclusive(() => {
-		const source = sessionPath();
-		let backup: string | null = null;
-		if (fs.existsSync(source)) {
-			const backupRoot = backupsDir();
-			fs.mkdirSync(backupRoot, { recursive: true });
-			backup = path.join(backupRoot, `session.pre-import-${utcStamp()}.json`);
-			fs.copyFileSync(source, backup);
+		assertNoPendingGameImport();
+		// A portable backup can itself be imported to switch back, including both descriptions.
+		try {
+			const backup = createGameExport(getSession());
+			const target = path.join(backupsDir(), `game.pre-import-${utcStamp()}-${crypto.randomUUID()}.json`);
+			writeImportFileAtomic(target, Buffer.from(JSON.stringify(backup, null, 2), 'utf-8'));
+		} catch (error) {
+			if (error instanceof HttpError) throw error;
+			throw new HttpError(500, 'Could not back up the current game. Nothing was imported.');
 		}
 		try {
-			candidate.save();
-		} catch {
-			if (backup !== null) {
-				try {
-					fs.copyFileSync(backup, source);
-					fs.unlinkSync(backup);
-				} catch {
-					// Best-effort restore.
-				}
-			}
-			throw new HttpError(500, 'could not save imported history');
+			commitGameImport(() => candidate.save(), descriptions);
+		} finally {
+			// Also clear cached descriptions after a successful rollback.
+			clearPromptCache();
 		}
 		setSession(candidate);
-		cleanupUnreferencedMediaFiles(candidate);
+		try {
+			cleanupUnreferencedMediaFiles(candidate);
+		} catch {
+			// Import is committed. Cleanup must not turn success into an apparent failure.
+			console.warn('Game imported; old image cleanup will resume on the next app start.');
+		}
 		return stateResponse();
 	});
 	return json(state);
