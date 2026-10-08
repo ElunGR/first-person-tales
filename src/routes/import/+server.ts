@@ -7,7 +7,7 @@ import { createGameExport } from '$lib/server/gameArchive';
 import { assertNoPendingGameImport, commitGameImport, writeImportFileAtomic } from '$lib/server/gameImportTransaction';
 import { HttpError } from '$lib/server/http';
 import { sessionLock } from '$lib/server/lock';
-import { HistoryExportSchema } from '$lib/server/models';
+import { GameExportSchema } from '$lib/server/models';
 import { backupsDir } from '$lib/server/paths';
 import { clearPromptCache, serializeGameDescriptions } from '$lib/server/prompts';
 import { cleanupUnreferencedMediaFiles, getSession, Session, setSession, validateSessionIntegrity } from '$lib/server/session';
@@ -38,13 +38,13 @@ export const POST = apiHandler(async ({ request }) => {
 	if (bodyObj.confirm !== true) throw new HttpError(400, 'explicit import confirmation is required');
 	const raw = bodyObj.data ?? Object.fromEntries(Object.entries(bodyObj).filter(([key]) => key !== 'confirm'));
 	if (typeof raw !== 'object' || raw === null || Array.isArray(raw) ||
-		!([1, 2] as unknown[]).includes((raw as Record<string, unknown>).version)) {
-		throw new HttpError(400, 'unsupported history export version');
+		(raw as Record<string, unknown>).version !== 2) {
+		throw new HttpError(400, 'unsupported game save version: only version 2 JSON saves can be imported');
 	}
 	let candidate: Session;
-	let descriptions: string | undefined;
+	let descriptions: string;
 	try {
-		const exported = HistoryExportSchema.parse(raw);
+		const exported = GameExportSchema.parse(raw);
 		candidate = validateSessionIntegrity({
 			messages: exported.messages,
 			media: [],
@@ -52,9 +52,7 @@ export const POST = apiHandler(async ({ request }) => {
 			summary_checkpoints: exported.summary_checkpoints,
 			last_narrator_prompt_tokens: exported.last_narrator_prompt_tokens
 		});
-		if (exported.version === 2) {
-			descriptions = serializeGameDescriptions(exported.player_character_description, exported.world_description);
-		}
+		descriptions = serializeGameDescriptions(exported.player_character_description, exported.world_description);
 	} catch {
 		throw new HttpError(400, 'invalid game export: check its fields, descriptions, message IDs, and summary references');
 	}

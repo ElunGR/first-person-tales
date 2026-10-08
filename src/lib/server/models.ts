@@ -15,7 +15,7 @@ import {
 } from './config';
 import { DEFAULT_TRANSLATION_LANGUAGE, TRANSLATION_LANGUAGES } from '$lib/translationLanguages';
 import { IMAGE_STYLES } from '$lib/imageStyles';
-import { MAX_DESCRIPTION_CHARS, normalizeUserDescription } from '$lib/descriptions';
+import { MAX_CHARACTER_DESCRIPTION_CHARS, MAX_WORLD_DESCRIPTION_CHARS } from '$lib/descriptions';
 
 export const MEDIA_KINDS = ['image'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
@@ -139,28 +139,21 @@ export const SettingsUpdateRequestSchema = z.strictObject({
 });
 export type SettingsUpdateRequest = z.infer<typeof SettingsUpdateRequestSchema>;
 
-/** Validate normalized size too: demoting headings may add characters. */
-export const WorldDescriptionSchema = z.string().max(MAX_DESCRIPTION_CHARS)
-	.transform(normalizeUserDescription).pipe(z.string().max(MAX_DESCRIPTION_CHARS));
-export const CharacterDescriptionSchema = WorldDescriptionSchema.refine(
-	(value) => value.length > 0, 'Character must not be empty'
-);
+/** Player text is stored verbatim, so the limit counts exactly what was typed. */
+export const WorldDescriptionSchema = z.string().max(MAX_WORLD_DESCRIPTION_CHARS);
+export const CharacterDescriptionSchema = z.string().max(MAX_CHARACTER_DESCRIPTION_CHARS)
+	.refine((value) => value.trim().length > 0, 'Character must not be empty');
 
-/** v1 restores history only; v2 also restores the editable character and world. */
-export const HistoryExportV1Schema = z.strictObject({
-	version: z.literal(1),
+/** The only supported portable format: history plus the editable character and world. */
+export const GameExportSchema = z.strictObject({
+	version: z.literal(2),
 	messages: z.array(MessageSchema.extend({ id: z.string().min(1) })),
 	narrator_start: z.number().int(),
 	summary_checkpoints: z.array(SummaryCheckpointSchema.extend({ id: z.string().min(1) })),
-	last_narrator_prompt_tokens: z.number().int().nullable()
-});
-export const GameExportSchema = HistoryExportV1Schema.extend({
-	version: z.literal(2),
+	last_narrator_prompt_tokens: z.number().int().nullable(),
 	player_character_description: CharacterDescriptionSchema,
 	world_description: WorldDescriptionSchema
 });
-export const HistoryExportSchema = z.discriminatedUnion('version', [HistoryExportV1Schema, GameExportSchema]);
-export type HistoryExport = z.infer<typeof HistoryExportSchema>;
 export type GameExport = z.infer<typeof GameExportSchema>;
 
 export interface StateResponse {

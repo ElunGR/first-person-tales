@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MAX_CHARACTER_DESCRIPTION_CHARS, MAX_WORLD_DESCRIPTION_CHARS } from '../src/lib/descriptions';
 import { newMessage } from '../src/lib/server/models';
 import { resetDataDir, setDataDir } from '../src/lib/server/paths';
 import { Session, setSession } from '../src/lib/server/session';
@@ -95,16 +96,16 @@ describe('character route validation', () => {
 		expect(response.status).toBe(422);
 	});
 
-	it('rejects a character longer than 10,000 characters', async () => {
+	it('rejects a character longer than its limit and accepts the limit itself', async () => {
 		const { PUT } = await import('../src/routes/character/+server');
-		const request = new Request('http://localhost/character', {
+		const put = (content: string) => PUT({ request: new Request('http://localhost/character', {
 			method: 'PUT',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ content: 'x'.repeat(10001) })
-		});
+			body: JSON.stringify({ content })
+		}) } as never);
 
-		const response = await PUT({ request } as never);
-		expect(response.status).toBe(422);
+		expect((await put('x'.repeat(MAX_CHARACTER_DESCRIPTION_CHARS))).status).toBe(200);
+		expect((await put('x'.repeat(MAX_CHARACTER_DESCRIPTION_CHARS + 1))).status).toBe(422);
 	});
 
 	it('accepts and persists a valid character', async () => {
@@ -117,7 +118,7 @@ describe('character route validation', () => {
 
 		const response = await PUT({ request } as never);
 		expect(response.status).toBe(200);
-		expect(await jsonResponse(response)).toMatchObject({ content: 'A careful explorer.\n## Skills', game_revision: expect.any(String) });
+		expect(await jsonResponse(response)).toMatchObject({ content: 'A careful explorer.\n# Skills', game_revision: expect.any(String) });
 		expect(fs.readFileSync(path.join(promptRoot.dir(), 'prompts.local.yaml'), 'utf8')).toContain(
 			'player_character_description'
 		);
@@ -125,16 +126,16 @@ describe('character route validation', () => {
 });
 
 describe('world route validation', () => {
-	it('rejects a world longer than 10,000 characters', async () => {
+	it('rejects a world longer than its limit and accepts the limit itself', async () => {
 		const { PUT } = await import('../src/routes/world/+server');
-		const request = new Request('http://localhost/world', {
+		const put = (content: string) => PUT({ request: new Request('http://localhost/world', {
 			method: 'PUT',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ content: 'x'.repeat(10001) })
-		});
+			body: JSON.stringify({ content })
+		}) } as never);
 
-		const response = await PUT({ request } as never);
-		expect(response.status).toBe(422);
+		expect((await put('x'.repeat(MAX_WORLD_DESCRIPTION_CHARS))).status).toBe(200);
+		expect((await put('x'.repeat(MAX_WORLD_DESCRIPTION_CHARS + 1))).status).toBe(422);
 	});
 
 	it('normalizes and persists a world without losing the character', async () => {
@@ -156,7 +157,7 @@ describe('world route validation', () => {
 		} as never);
 
 		expect(response.status).toBe(200);
-		expect(await jsonResponse(response)).toMatchObject({ content: 'A kingdom.\n## Rules', game_revision: expect.any(String) });
+		expect(await jsonResponse(response)).toMatchObject({ content: 'A kingdom.\n# Rules', game_revision: expect.any(String) });
 		const saved = fs.readFileSync(path.join(promptRoot.dir(), 'prompts.local.yaml'), 'utf8');
 		expect(saved).toContain('player_character_description');
 		expect(saved).toContain('world_description');

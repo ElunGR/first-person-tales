@@ -557,8 +557,20 @@ button:focus-visible {
 }
 .settings-card label, .media-card label { margin-bottom: 10px; }
 .field-note { color: var(--muted); font-size: 11px; font-weight: normal; }
-.system-heading-note { display: block; margin-top: 8px; line-height: 1.45; }
-.system-heading-note code { color: var(--fg); }
+/* Character/world editors: one quiet counter in the lower right, one error line on a
+   failed save. The counter never changes colour and never limits typing. */
+.counter-field { position: relative; }
+.counter-field textarea { padding-bottom: 22px; }
+.char-counter {
+  position: absolute;
+  right: 20px;
+  bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.limit-error { display: block; margin-top: 8px; color: var(--danger); line-height: 1.45; }
 .field-note-below {
   min-height: 1.25em;
   margin-top: 2px;

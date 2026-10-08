@@ -11,7 +11,6 @@ import {
 	getPlayerCharacterDescription,
 	getPrompt,
 	getWorldDescription,
-	normalizeUserDescription,
 	savePlayerCharacterDescription,
 	saveWorldDescription
 } from '../src/lib/server/prompts';
@@ -96,24 +95,18 @@ describe('private character and world descriptions', () => {
 		);
 	});
 
-	it('demotes only Markdown first-level headings', () => {
-		expect(normalizeUserDescription('# Appearance\n## Skills\n### Notes\n#hashtag\n   # Rules')).toBe(
-			'## Appearance\n## Skills\n### Notes\n#hashtag\n   ## Rules'
-		);
-	});
-
-	it('saves character and world independently without losing either', () => {
-		expect(savePlayerCharacterDescription('Hero\n# Skills')).toBe('Hero\n## Skills');
-		expect(saveWorldDescription('Kingdom\n# Rules')).toBe('Kingdom\n## Rules');
+	it('saves character and world verbatim without losing either', () => {
+		expect(savePlayerCharacterDescription('Hero\n# Skills')).toBe('Hero\n# Skills');
+		expect(saveWorldDescription('Kingdom\n# Rules')).toBe('Kingdom\n# Rules');
 		expect(localData()).toEqual({
-			player_character_description: 'Hero\n## Skills',
-			world_description: 'Kingdom\n## Rules'
+			player_character_description: 'Hero\n# Skills',
+			world_description: 'Kingdom\n# Rules'
 		});
 
 		savePlayerCharacterDescription('Changed hero');
 		expect(localData()).toEqual({
 			player_character_description: 'Changed hero',
-			world_description: 'Kingdom\n## Rules'
+			world_description: 'Kingdom\n# Rules'
 		});
 	});
 
@@ -126,17 +119,17 @@ describe('private character and world descriptions', () => {
 		expect(composeRoleplayContext()).toBe('# PC (Player character)\nHero');
 	});
 
-	it('composes fixed system headings around normalized descriptions', () => {
+	it('composes system headings around player text without rewriting their headings', () => {
 		savePlayerCharacterDescription('# PC (Player character)\nHero\n# Skills');
 		saveWorldDescription('# World Description\nKingdom\n# Rules');
 
 		const context = composeRoleplayContext();
-		expect(context).toBe(
-			'# PC (Player character)\n## PC (Player character)\nHero\n## Skills\n\n' +
-				'# World Description\n## World Description\nKingdom\n## Rules'
-		);
-		expect(context.split('\n').filter((line) => line === '# PC (Player character)')).toHaveLength(1);
-		expect(context.split('\n').filter((line) => line === '# World Description')).toHaveLength(1);
+		// The application heading still comes from prompts.yaml, and the player's own text —
+		// including a heading that happens to repeat it — is passed through unchanged.
+		expect(context.startsWith('# PC (Player character)\n')).toBe(true);
+		expect(context).toContain('# PC (Player character)\nHero\n# Skills');
+		expect(context).toContain('\n\n# World Description\n# World Description\nKingdom\n# Rules');
+		expect(context).not.toContain('## PC (Player character)');
 	});
 
 	it('takes system section structure from prompts.yaml rather than hidden code', () => {
@@ -262,7 +255,8 @@ describe('shared image prompt group rules', () => {
 		const ages = [...example.matchAll(/(\d+)-year-old/g)].map((match) => Number(match[1]));
 		expect(ages).toHaveLength(2);
 		expect(ages.every((age) => age >= 18)).toBe(true);
-		expect(example).toContain('adult builds and adult facial features');
+		// The literal "adult build and adult facial features" wording is required from the
+		// rule itself (checked above), not repeated in every example.
 		expect(example).toContain('The woman has');
 		expect(example).toContain('The man has');
 		expect(example).toContain('she extends a small brass key toward the man');

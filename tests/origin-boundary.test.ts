@@ -62,8 +62,9 @@ describe('unsafe request boundary', () => {
 			method: 'POST',
 			headers: { Origin: 'http://localhost', 'Content-Type': 'application/json' },
 			body: JSON.stringify({ confirm: true, data: {
-				version: 1, messages: [imported], narrator_start: 0,
-				summary_checkpoints: [], last_narrator_prompt_tokens: null
+				version: 2, messages: [imported], narrator_start: 0,
+				summary_checkpoints: [], last_narrator_prompt_tokens: null,
+				player_character_description: 'Imported hero', world_description: 'Imported world'
 			} })
 		});
 		const importResolver = vi.fn(async () => POST({ request: importRequest } as never));

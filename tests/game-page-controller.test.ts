@@ -107,19 +107,16 @@ describe('GamePageController bootstrap ownership', () => {
 });
 
 describe('GamePageController game import and export', () => {
-	function savePayload(version = 2): Record<string, unknown> {
-		const payload: Record<string, unknown> = {
-			version,
+	function savePayload(): Record<string, unknown> {
+		return {
+			version: 2,
 			messages: [],
 			narrator_start: 0,
 			summary_checkpoints: [],
-			last_narrator_prompt_tokens: null
+			last_narrator_prompt_tokens: null,
+			player_character_description: 'Imported explorer',
+			world_description: ''
 		};
-		if (version === 2) {
-			payload.player_character_description = 'Imported explorer';
-			payload.world_description = '';
-		}
-		return payload;
 	}
 
 	function savedFile(raw: unknown) {
@@ -214,8 +211,8 @@ describe('GamePageController game import and export', () => {
 		expect(controller.statusText).toBe('Ready');
 	});
 
-	it.each([1, 2])('explains version %s replacement and clears stale editors only after success', async (version) => {
-		const payload = savePayload(version);
+	it('explains the version 2 replacement and clears stale editors only after success', async () => {
+		const payload = savePayload();
 		const { file } = savedFile(payload);
 		const confirmMock = vi.fn((_message: string) => true);
 		const fetchMock = vi.fn().mockResolvedValue(response(EMPTY_STATE));
@@ -226,11 +223,7 @@ describe('GamePageController game import and export', () => {
 		await controller.importHistory(file);
 
 		const confirmation = confirmMock.mock.calls[0][0] as string;
-		if (version === 2) {
-			expect(confirmation).toContain('replace the current history, character description, and world description');
-		} else {
-			expect(confirmation).toContain('leaves the character and world descriptions unchanged');
-		}
+		expect(confirmation).toContain('replace the current history, character description, and world description');
 		expect(confirmation).toContain('Export the current game as JSON first');
 		expect(confirmation).toContain('Current images will be deleted');
 		expect(confirmation).toContain('cannot be restored from the JSON save or backup');
@@ -266,7 +259,7 @@ describe('GamePageController game import and export', () => {
 		expectDraftsPreserved(controller);
 	});
 
-	it.each([null, [], {}, { version: 3 }, { version: '2' }, { version: true }])(
+	it.each([null, [], {}, { version: 1 }, { version: 3 }, { version: '2' }, { version: true }])(
 		'rejects unsupported JSON root or version %j before confirmation or request', async (raw) => {
 			const { file } = savedFile(raw);
 			const confirmMock = vi.fn((_message: string) => true);

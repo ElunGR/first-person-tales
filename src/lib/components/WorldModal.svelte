@@ -1,6 +1,6 @@
 <script lang="ts">
 	import ModalFrame from './ModalFrame.svelte';
-	import { MAX_DESCRIPTION_CHARS } from '$lib/descriptions';
+	import { MAX_WORLD_DESCRIPTION_CHARS, descriptionUsage } from '$lib/descriptions';
 
 	let {
 		open,
@@ -17,10 +17,27 @@
 	} = $props();
 
 	let content = $state('');
+	let saveAttempted = $state(false);
 
 	$effect(() => {
-		if (open) content = world;
+		if (open) {
+			content = world;
+			saveAttempted = false;
+		}
 	});
+
+	const usage = $derived(descriptionUsage(content, MAX_WORLD_DESCRIPTION_CHARS));
+	const limitError = $derived(saveAttempted && usage.over);
+
+	function save(): void {
+		if (busy) return;
+		if (usage.over) {
+			saveAttempted = true;
+			return;
+		}
+		saveAttempted = false;
+		onSave(content);
+	}
 </script>
 
 <ModalFrame
@@ -34,19 +51,18 @@
 	{#snippet children()}
 		<label>
 			<span>Description</span>
-			<textarea
-				data-modal-autofocus
-				rows="16"
-				maxlength={MAX_DESCRIPTION_CHARS}
-				bind:value={content}
-			></textarea>
+			<div class="counter-field">
+				<textarea data-modal-autofocus rows="16" bind:value={content}></textarea>
+				<span class="char-counter" aria-hidden="true">{usage.count}/{usage.limit}</span>
+			</div>
 		</label>
-		<span class="field-note system-heading-note"
-			>First-level headings (<code>#</code>) are reserved for system sections and are saved as second-level
-			headings (<code>##</code>).</span
-		>
+		{#if limitError}
+			<span class="field-note limit-error"
+				>Too long: {usage.count} of {usage.limit} characters. Shorten the text, then save again.</span
+			>
+		{/if}
 	{/snippet}
 	{#snippet footer()}
-		<button type="button" disabled={busy} onclick={() => onSave(content)}>Save</button>
+		<button type="button" disabled={busy} onclick={save}>Save</button>
 	{/snippet}
 </ModalFrame>

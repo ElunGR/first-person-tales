@@ -5,9 +5,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { localPromptsPath, promptsPath } from './paths';
 import { assertNoPendingGameImport } from './gameImportTransaction';
-import { normalizeUserDescription } from '$lib/descriptions';
 import { writeAllBytes } from './mediaIo';
-export { normalizeUserDescription } from '$lib/descriptions';
 
 const PROMPTS_NAME = 'prompts.yaml';
 const LOCAL_PROMPTS_NAME = 'prompts.local.yaml';
@@ -108,13 +106,14 @@ export function formatPrompt(name: string, kwargs: Record<string, unknown>): str
 }
 
 export function getPlayerCharacterDescription(): string {
-	const content = normalizeUserDescription(getPrompt(PLAYER_DESCRIPTION_KEY));
-	if (!content) throw new Error('player character description is empty');
+	const content = getPrompt(PLAYER_DESCRIPTION_KEY);
+	if (!content.trim()) throw new Error('player character description is empty');
 	return content;
 }
 
+/** Player text is returned verbatim: headings stay exactly as the player wrote them. */
 export function getWorldDescription(): string {
-	return normalizeUserDescription(getOptionalPrompt(WORLD_DESCRIPTION_KEY));
+	return getOptionalPrompt(WORLD_DESCRIPTION_KEY);
 }
 
 /** Render prompt-file-owned system sections around editable descriptions. */
@@ -178,24 +177,22 @@ function saveDescription(key: (typeof LOCAL_DESCRIPTION_KEYS)[number], content: 
 	assertNoPendingGameImport();
 	const local = loadRaw(localPromptsPath(), LOCAL_PROMPTS_NAME, true);
 	validateLocalDescriptions(local);
-	const normalized = normalizeUserDescription(content);
+	// Player text is kept verbatim; only an all-whitespace world collapses to empty.
+	const stored = content.trim() ? content : '';
 	const next: Record<string, string> = {};
 	for (const allowedKey of LOCAL_DESCRIPTION_KEYS) {
 		const existing = local[allowedKey];
-		if (typeof existing === 'string') {
-			next[allowedKey] = normalizeUserDescription(existing);
-		}
+		if (typeof existing === 'string') next[allowedKey] = existing;
 	}
-	if (normalized || key === WORLD_DESCRIPTION_KEY) next[key] = normalized;
+	if (stored || key === WORLD_DESCRIPTION_KEY) next[key] = stored;
 	else delete next[key];
 	writeLocalDescriptions(next);
-	return normalized;
+	return stored;
 }
 
 export function savePlayerCharacterDescription(content: string): string {
-	const normalized = normalizeUserDescription(content);
-	if (!normalized) throw new Error('Character must not be empty');
-	return saveDescription(PLAYER_DESCRIPTION_KEY, normalized);
+	if (!content.trim()) throw new Error('Character must not be empty');
+	return saveDescription(PLAYER_DESCRIPTION_KEY, content);
 }
 
 export function saveWorldDescription(content: string): string {
@@ -204,10 +201,9 @@ export function saveWorldDescription(content: string): string {
 
 /** Replace both editable descriptions, including an explicit empty world. */
 export function serializeGameDescriptions(character: string, world: string): string {
-	const normalizedCharacter = normalizeUserDescription(character);
-	if (!normalizedCharacter) throw new Error('Character must not be empty');
+	if (!character.trim()) throw new Error('Character must not be empty');
 	return YAML.stringify({
-		[PLAYER_DESCRIPTION_KEY]: normalizedCharacter,
-		[WORLD_DESCRIPTION_KEY]: normalizeUserDescription(world)
+		[PLAYER_DESCRIPTION_KEY]: character,
+		[WORLD_DESCRIPTION_KEY]: world.trim() ? world : ''
 	});
 }

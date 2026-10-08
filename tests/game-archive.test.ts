@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import YAML from 'yaml';
 import { MAX_IMPORT_BODY_BYTES } from '../src/lib/server/config';
-import { MAX_DESCRIPTION_CHARS } from '../src/lib/descriptions';
+import { MAX_CHARACTER_DESCRIPTION_CHARS, MAX_WORLD_DESCRIPTION_CHARS } from '../src/lib/descriptions';
 import { importJournalPath } from '../src/lib/server/gameImportTransaction';
 import { setApiKey } from '../src/lib/server/keyring';
 import { newMessage } from '../src/lib/server/models';
@@ -30,14 +30,14 @@ beforeEach(() => {
 
 afterEach(() => { vi.restoreAllMocks(); });
 
-function incoming(version = 2): Record<string, unknown> {
+function incoming(): Record<string, unknown> {
 	const { media: _media, ...history } = new Session({
 		messages: [newMessage({ role: 'assistant', content: 'Imported scene', translation_ru: 'Translation fixture' })],
 		lastNarratorPromptTokens: 1234
 	}).toDict();
 	return {
-		version, ...history,
-		...(version === 2 ? { player_character_description: 'Imported hero', world_description: 'Imported world' } : {})
+		version: 2, ...history,
+		player_character_description: 'Imported hero', world_description: 'Imported world'
 	};
 }
 
@@ -87,17 +87,17 @@ describe('game export', () => {
 		expect(fs.existsSync(localPromptsPath())).toBe(false);
 	});
 
-	it('exports current normalized editable descriptions in JSON and readable Markdown', async () => {
+	it('exports current editable descriptions verbatim in JSON and readable Markdown', async () => {
 		savePlayerCharacterDescription('Hero\n# Skills');
 		saveWorldDescription('World\n# Rules');
 		const data = await (await exported()).json();
-		expect(data.player_character_description).toBe('Hero\n## Skills');
-		expect(data.world_description).toBe('World\n## Rules');
+		expect(data.player_character_description).toBe('Hero\n# Skills');
+		expect(data.world_description).toBe('World\n# Rules');
 		const markdown = await exported('markdown');
 		expect(markdown.headers.get('Content-Type')).toContain('text/markdown');
 		const text = await markdown.text();
-		expect(text).toContain('## Player character\n\nHero\n## Skills');
-		expect(text).toContain('## World\n\nWorld\n## Rules');
+		expect(text).toContain('## Player character\n\nHero\n# Skills');
+		expect(text).toContain('## World\n\nWorld\n# Rules');
 		expect(text).toContain('Original scene');
 		expect(text).toContain('for reading only');
 	});
@@ -143,8 +143,8 @@ describe('game import and switching', () => {
 
 		const result = await load(data);
 		expect(result.status).toBe(200);
-		expect(getPlayerCharacterDescription()).toBe('## Character\nImported hero');
-		expect(getWorldDescription()).toBe('## World\nImported world');
+		expect(getPlayerCharacterDescription()).toBe('# Character\nImported hero');
+		expect(getWorldDescription()).toBe('# World\nImported world');
 		expect(getSession().messages).toEqual(data.messages);
 		expect(getSession().messages[0].translation_ru).toBe('Translation fixture');
 		expect(getSession().narratorStart).toBe(1);
@@ -154,7 +154,7 @@ describe('game import and switching', () => {
 		expect(fs.existsSync(path.join(imagesDir(), 'original.png'))).toBe(false);
 		expect(fs.existsSync(importJournalPath())).toBe(false);
 		clearPromptCache();
-		expect(getWorldDescription()).toBe('## World\nImported world');
+		expect(getWorldDescription()).toBe('# World\nImported world');
 	});
 
 	it('keeps a portable pre-import backup and permits switching between both complete games', async () => {
@@ -187,23 +187,6 @@ describe('game import and switching', () => {
 		expect(getWorldDescription()).toBe('');
 		expect((await (await exported()).json()).world_description).toBe('');
 	});
-
-	it('imports legacy v1 without changing the bytes of existing descriptions', async () => {
-		savePlayerCharacterDescription('Keep hero');
-		saveWorldDescription('Keep world');
-		const before = fs.readFileSync(localPromptsPath());
-		expect((await load(incoming(1))).status).toBe(200);
-		expect(fs.readFileSync(localPromptsPath())).toEqual(before);
-		expect(getPlayerCharacterDescription()).toBe('Keep hero');
-		expect(getWorldDescription()).toBe('Keep world');
-	});
-
-	it('imports legacy v1 without creating a previously absent local description file', async () => {
-		expect(fs.existsSync(localPromptsPath())).toBe(false);
-		expect((await load(incoming(1))).status).toBe(200);
-		expect(fs.existsSync(localPromptsPath())).toBe(false);
-		expect(getPlayerCharacterDescription()).toBe('CHARACTER_SENTINEL');
-	});
 });
 
 const invalidMutations: Array<[string, (data: Record<string, unknown>) => void]> = [
@@ -211,8 +194,8 @@ const invalidMutations: Array<[string, (data: Record<string, unknown>) => void]>
 	['missing character', (data) => { delete data.player_character_description; }],
 	['missing world', (data) => { delete data.world_description; }],
 	['wrong world type', (data) => { data.world_description = null; }],
-	['long description', (data) => { data.world_description = 'x'.repeat(MAX_DESCRIPTION_CHARS + 1); }],
-	['description too long after normalization', (data) => { data.world_description = '# ' + 'x'.repeat(MAX_DESCRIPTION_CHARS - 2); }],
+	['long world description', (data) => { data.world_description = 'x'.repeat(MAX_WORLD_DESCRIPTION_CHARS + 1); }],
+	['long character description', (data) => { data.player_character_description = 'x'.repeat(MAX_CHARACTER_DESCRIPTION_CHARS + 1); }],
 	['unknown top-level field', (data) => { data.api_key = 'fixture'; }],
 	['duplicate message IDs', (data) => { (data.messages as unknown[]).push((data.messages as unknown[])[0]); }],
 	['missing message ID', (data) => { delete (data.messages as Record<string, unknown>[])[0].id; }],
@@ -220,7 +203,7 @@ const invalidMutations: Array<[string, (data: Record<string, unknown>) => void]>
 	['invalid summary reference', (data) => { data.summary_checkpoints = [{ id: 'c', previous_narrator_start: 0, branch_message_id: 'missing' }]; }],
 	['unknown version', (data) => { data.version = 3; }],
 	['boolean version', (data) => { data.version = true; }],
-	['v2 descriptions mislabeled as v1', (data) => { data.version = 1; }]
+	['unsupported version 1 save', (data) => { data.version = 1; }]
 ];
 
 describe('import rejects unsafe or partial archives before writes', () => {

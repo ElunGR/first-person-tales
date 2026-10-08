@@ -448,14 +448,11 @@ export class GamePageController {
 		try {
 			const raw: unknown = JSON.parse(await file.text());
 			if (typeof raw !== 'object' || raw === null || Array.isArray(raw) ||
-				!('version' in raw) || (raw.version !== 1 && raw.version !== 2)) {
-				throw new Error('Unsupported game save version; choose a JSON save with version 1 or 2');
+				!('version' in raw) || raw.version !== 2) {
+				throw new Error('Unsupported game save version; choose a version 2 JSON game save');
 			}
-			const replacement = raw.version === 2
-				? 'Import will replace the current history, character description, and world description.'
-				: 'Import will replace the current history. This older version 1 save leaves the character and world descriptions unchanged.';
 			if (!confirm(
-				`${replacement}\n\n` +
+				'Import will replace the current history, character description, and world description.\n\n' +
 				'Export the current game as JSON first if you want to keep it. A backup will be created before import.\n\n' +
 				'Current images will be deleted and cannot be restored from the JSON save or backup; images are not included. Continue?'
 			)) return;

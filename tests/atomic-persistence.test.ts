@@ -189,15 +189,15 @@ describe('byte-complete atomic persistence', () => {
 });
 
 describe('import cannot commit an incomplete session write', () => {
-	it.each([1, 2])('writes the complete UTF-8 session before committing archive v%s', async (version) => {
+	it('writes the complete UTF-8 session before committing the archive', async () => {
 		writerFixture('session');
 		const oldSession = getSession();
 		const { records } = injectPrefixWrites(sessionPath());
 		const message = newMessage({ role: 'assistant', content: 'Imported caf\u00e9 \u2603 \ud83d\ude80' });
 		const data = {
-			version, messages: [message], narrator_start: 0, summary_checkpoints: [],
+			version: 2, messages: [message], narrator_start: 0, summary_checkpoints: [],
 			last_narrator_prompt_tokens: null,
-			...(version === 2 ? { player_character_description: 'Imported hero', world_description: '' } : {})
+			player_character_description: 'Imported hero', world_description: ''
 		};
 		const response = await importGame({ request: new Request('http://localhost/import', {
 			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true, data })
@@ -210,10 +210,10 @@ describe('import cannot commit an incomplete session write', () => {
 		expectCompleteOffsets(records, expected);
 		expect(Session.load()!.messages).toEqual([message]);
 		expect(fs.existsSync(importJournalPath())).toBe(false);
-		if (version === 2) expect(getPlayerCharacterDescription()).toBe('Imported hero');
+		expect(getPlayerCharacterDescription()).toBe('Imported hero');
 	});
 
-	it.each([1, 2])('rolls back archive v%s on an error after a partial session write, without deleting media', async (version) => {
+	it('rolls back the archive on an error after a partial session write, without deleting media', async () => {
 		writerFixture('session');
 		const oldSession = getSession();
 		oldSession.addMedia({ messageId: oldSession.messages[0].id, kind: 'image', file: 'previous.png' });
@@ -223,8 +223,8 @@ describe('import cannot commit an incomplete session write', () => {
 		const localExisted = fs.existsSync(localPromptsPath());
 		injectPrefixWrites(sessionPath(), 'throw');
 		const data = {
-			version, messages: [], narrator_start: 0, summary_checkpoints: [], last_narrator_prompt_tokens: null,
-			...(version === 2 ? { player_character_description: 'Imported hero', world_description: '' } : {})
+			version: 2, messages: [], narrator_start: 0, summary_checkpoints: [], last_narrator_prompt_tokens: null,
+			player_character_description: 'Imported hero', world_description: ''
 		};
 		const response = await importGame({ request: new Request('http://localhost/import', {
 			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true, data })
