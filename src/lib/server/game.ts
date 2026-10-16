@@ -62,16 +62,18 @@ function recordNarratorPromptTokens(session: Session, llm: CompletionProvider): 
 		typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
-/** Sampling options for a narrator completion from persisted settings. */
+/**
+ * Sampling options for a narrator completion from persisted settings.
+ *
+ * The dictionary is sent as written, including the defaults the app ships. The
+ * only override is the Regenerate temperature: a retry after a repetition loop
+ * is the one place where a fresher sample matters more than the saved value.
+ */
 function narratorCompletionOptions(overrides: { temperature?: number } | null) {
 	const settings: AppSettings = loadSettings();
-	return {
-		temperature: overrides?.temperature ?? settings.narrator_temperature,
-		frequencyPenalty: settings.narrator_frequency_penalty,
-		presencePenalty: settings.narrator_presence_penalty,
-		maxCompletionTokens: settings.narrator_max_tokens,
-		topP: settings.narrator_top_p
-	};
+	const parameters = { ...settings.narrator_parameters };
+	if (overrides?.temperature !== undefined) parameters['temperature'] = overrides.temperature;
+	return { parameters };
 }
 
 export interface StoryOperationOptions {
@@ -211,7 +213,7 @@ export async function resummary(
 		throw new ValueError('History is empty; there is nothing to summarize');
 	}
 	const raw = await llm.complete(buildSummaryMessages(session), {
-		temperature: UTILITY_TEMPERATURE,
+		parameters: { temperature: UTILITY_TEMPERATURE },
 		signal: options.signal
 	});
 	const digest = raw.trim();
@@ -287,7 +289,7 @@ export async function translateText(text: string, llm: CompletionProvider, signa
 			},
 			{ role: 'user', content: text }
 		],
-		{ temperature: UTILITY_TEMPERATURE, signal }
+		{ parameters: { temperature: UTILITY_TEMPERATURE }, signal }
 	);
 	return raw.trim();
 }
@@ -298,7 +300,7 @@ export async function improveText(text: string, llm: CompletionProvider, signal?
 			{ role: 'system', content: getPrompt('improve') },
 			{ role: 'user', content: text }
 		],
-		{ temperature: UTILITY_TEMPERATURE, signal }
+		{ parameters: { temperature: UTILITY_TEMPERATURE }, signal }
 	);
 	return raw.trim();
 }
@@ -351,7 +353,7 @@ export async function prepareMediaText(
 	}
 	const raw = await options.llm.complete(
 		buildImageRewriteMessages(session, index, requested),
-		{ temperature: UTILITY_TEMPERATURE, signal: options.signal }
+		{ parameters: { temperature: UTILITY_TEMPERATURE }, signal: options.signal }
 	);
 	return raw.trim().replace(/^"+/, '').replace(/"+$/, '').slice(0, 1800);
 }

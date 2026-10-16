@@ -46,13 +46,13 @@ export type KeySource =
 	| 'storage_unavailable'
 	| 'settings_corrupt';
 
+/** One sampling field sent to the provider exactly as the player typed it. */
+export type NarratorParameterValue = string | number | boolean | string[] | number[];
+export type NarratorParameters = Record<string, NarratorParameterValue>;
+
 export interface SettingsPayload {
 	active_provider: string;
-	narrator_temperature: number;
-	narrator_frequency_penalty: number;
-	narrator_presence_penalty: number;
-	narrator_max_tokens: number;
-	narrator_top_p: number;
+	narrator_parameters: NarratorParameters;
 	translation_language: import('$lib/translationLanguages').TranslationLanguage;
 	image_style: import('$lib/imageStyles').ImageStyle;
 	providers: Record<string, { text_model?: string; image_model?: string }>;

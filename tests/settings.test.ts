@@ -53,8 +53,10 @@ describe('settings recovery', () => {
 	it('missing settings file returns defaults', () => {
 		const settings = loadSettings();
 		expect(settings.active_provider).toBe('venice');
-		expect(settings.narrator_temperature).toBeCloseTo(0.75);
-		expect(settings.narrator_max_tokens).toBe(8000);
+		expect(settings.narrator_parameters).toEqual({
+			temperature: 0.75,
+			max_completion_tokens: 8000
+		});
 		expect(settings.translation_language).toBe('Russian');
 		expect(settings.image_style).toBe('none');
 		expect(providerSettings(settings).text_model).toBe('aion-labs-aion-3-5');
@@ -85,7 +87,7 @@ describe('settings recovery', () => {
 		expect(published['key_configured']).toEqual({ venice: true });
 	});
 
-	it('settings with wrong types fall back to field defaults', () => {
+	it('settings with wrong types fall back to the default parameter dictionary', () => {
 		fs.mkdirSync(dataDir(), { recursive: true });
 		fs.writeFileSync(
 			settingsPath(),
@@ -94,9 +96,62 @@ describe('settings recovery', () => {
 		);
 
 		const settings = loadSettings();
-		expect(settings.narrator_temperature).toBeCloseTo(0.75);
+		expect(settings.narrator_parameters['temperature']).toBeCloseTo(0.75);
 		expect(providerSettings(settings).text_model).toBe('aion-labs-aion-3-5');
 		expect(providerSettings(settings).image_model).toBe('krea-2-turbo');
+	});
+
+	it('converts the fixed 1.2.x narrator fields into dictionary entries', () => {
+		fs.mkdirSync(dataDir(), { recursive: true });
+		fs.writeFileSync(
+			settingsPath(),
+			JSON.stringify({
+				narrator_temperature: 1.05,
+				narrator_top_p: 0.9,
+				narrator_frequency_penalty: 0.35,
+				narrator_presence_penalty: 0.2,
+				narrator_max_tokens: 6000,
+				providers: { venice: { text_model: 'legacy-model' } }
+			}),
+			'utf-8'
+		);
+
+		const settings = loadSettings();
+		expect(settings.narrator_parameters).toEqual({
+			temperature: 1.05,
+			max_completion_tokens: 6000,
+			top_p: 0.9,
+			frequency_penalty: 0.35,
+			presence_penalty: 0.2
+		});
+		expect(providerSettings(settings).text_model).toBe('legacy-model');
+	});
+
+	it('keeps a saved dictionary over the legacy fields and drops unusable entries', () => {
+		fs.mkdirSync(dataDir(), { recursive: true });
+		fs.writeFileSync(
+			settingsPath(),
+			JSON.stringify({
+				narrator_temperature: 1.05,
+				narrator_parameters: {
+					temperature: 0.8,
+					MODEL: 'someone-else',
+					'bad name': 1,
+					top_k: 40,
+					stop: ['###'],
+					empty: null
+				}
+			}),
+			'utf-8'
+		);
+
+		const settings = loadSettings();
+		expect(settings.narrator_parameters).toEqual({
+			temperature: 0.8,
+			max_completion_tokens: 8000,
+			top_k: 40,
+			stop: ['###']
+		});
 	});
 
 	it('preserves an explicitly saved Aion 3.0 selection after the default changes', () => {
@@ -120,7 +175,7 @@ describe('settings recovery', () => {
 	it('save and load roundtrip persists model selection', () => {
 		const settings = loadSettings();
 		settings.providers['venice'] = { text_model: 'llama', image_model: 'flux' };
-		settings.narrator_temperature = 1.1;
+		settings.narrator_parameters = { temperature: 1.1, max_completion_tokens: 8000, top_k: 40 };
 		settings.translation_language = 'Korean';
 		settings.image_style = 'anime';
 		saveSettings(settings);
@@ -129,7 +184,11 @@ describe('settings recovery', () => {
 		const reloaded = loadSettings();
 		expect(providerSettings(reloaded).text_model).toBe('llama');
 		expect(providerSettings(reloaded).image_model).toBe('flux');
-		expect(reloaded.narrator_temperature).toBeCloseTo(1.1);
+		expect(reloaded.narrator_parameters).toEqual({
+			temperature: 1.1,
+			max_completion_tokens: 8000,
+			top_k: 40
+		});
 		expect(reloaded.translation_language).toBe('Korean');
 		expect(reloaded.image_style).toBe('anime');
 	});
@@ -427,15 +486,96 @@ describe('settings route credential policy', () => {
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
 				providers: { venice: { text_model: 'new-model' } },
-				narrator_temperature: 1.2
+				narrator_parameters: { temperature: 1.2, top_k: 40 }
 			})
 		});
 
 		const response = await PUT({ request } as never);
 		expect(response.status).toBe(200);
 		const published = (await response.json()) as Record<string, unknown>;
-		expect(published['narrator_temperature']).toBe(1.2);
+		// The answer merges the shipped defaults, so the open form shows the
+		// fields the next narrator request will actually carry.
+		expect(published['narrator_parameters']).toMatchObject({ temperature: 1.2, top_k: 40 });
+		resetSettingsStateForTests();
+		expect(loadSettings().narrator_parameters).toEqual({
+			temperature: 1.2,
+			top_k: 40,
+			max_completion_tokens: 8000
+		});
 		expect(published['key_source']).toEqual({ venice: 'environment' });
 		expect(published['key_configured']).toEqual({ venice: true });
+	});
+});
+
+describe('narrator parameter route policy', () => {
+	async function putNarratorParameters(fields: Record<string, unknown>) {
+		const { PUT } = await import('../src/routes/settings/+server');
+		const request = new Request('http://localhost/settings', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ providers: {}, ...fields })
+		});
+		return PUT({ request } as never);
+	}
+
+	it('normalizes names and keeps the saved dictionary for an older client', async () => {
+		const saved = await putNarratorParameters({
+			narrator_parameters: { Temperature: 0.9, top_k: 40, Stop: ['###'] }
+		});
+		expect(saved.status).toBe(200);
+		expect((await saved.json()).narrator_parameters).toMatchObject({
+			temperature: 0.9,
+			top_k: 40,
+			stop: ['###']
+		});
+		resetSettingsStateForTests();
+		// A save without the dictionary keeps the saved fields; loading merges
+		// the shipped defaults back in.
+		expect(loadSettings().narrator_parameters).toEqual({
+			temperature: 0.9,
+			top_k: 40,
+			stop: ['###'],
+			max_completion_tokens: 8000
+		});
+
+		const older = await putNarratorParameters({ image_style: 'anime' });
+		expect(older.status).toBe(200);
+		expect((await older.json()).narrator_parameters).toMatchObject({
+			temperature: 0.9,
+			top_k: 40,
+			stop: ['###']
+		});
+	});
+
+	it('stores the shipped defaults, so clearing the dictionary brings them back', async () => {
+		await putNarratorParameters({ narrator_parameters: { temperature: 1.4 } });
+		const cleared = await putNarratorParameters({ narrator_parameters: {} });
+		expect(cleared.status).toBe(200);
+		const defaults = { temperature: 0.75, max_completion_tokens: 8000 };
+		expect((await cleared.json()).narrator_parameters).toEqual(defaults);
+		resetSettingsStateForTests();
+		expect(loadSettings().narrator_parameters).toEqual(defaults);
+	});
+
+	it.each([
+		['a reserved name', { model: 'someone-else' }],
+		['an invalid name', { 'bad name': 1 }],
+		['an unsupported value', { top_k: { nested: 1 } }],
+		['a null value', { top_k: null }]
+	])('rejects %s before anything is saved', async (_label, parameters) => {
+		const response = await putNarratorParameters({ narrator_parameters: parameters });
+		expect(response.status).toBe(422);
+		resetSettingsStateForTests();
+		expect(loadSettings().narrator_parameters).toEqual({
+			temperature: 0.75,
+			max_completion_tokens: 8000
+		});
+	});
+
+	it('rejects more parameters than the supported maximum', async () => {
+		const tooMany: Record<string, number> = {};
+		for (let index = 0; index <= 32; index += 1) tooMany[`param_${index}`] = index;
+		const response = await putNarratorParameters({ narrator_parameters: tooMany });
+		expect(response.status).toBe(422);
 	});
 });

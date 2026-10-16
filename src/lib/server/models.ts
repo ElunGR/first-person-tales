@@ -6,13 +6,9 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import {
-	MAX_TEXT_INPUT_CHARS,
-	NARRATOR_FREQUENCY_PENALTY,
-	NARRATOR_MAX_COMPLETION_TOKENS,
-	NARRATOR_PRESENCE_PENALTY,
-	NARRATOR_TEMPERATURE,
-	NARRATOR_TOP_P
+	MAX_TEXT_INPUT_CHARS
 } from './config';
+import { NarratorParametersInputSchema } from '$lib/narratorParameters';
 import { DEFAULT_TRANSLATION_LANGUAGE, TRANSLATION_LANGUAGES } from '$lib/translationLanguages';
 import { IMAGE_STYLES } from '$lib/imageStyles';
 import { MAX_CHARACTER_DESCRIPTION_CHARS, MAX_WORLD_DESCRIPTION_CHARS } from '$lib/descriptions';
@@ -126,11 +122,7 @@ export const ProviderModelsSchema = z.strictObject({
 
 export const SettingsUpdateRequestSchema = z.strictObject({
 	active_provider: z.literal('venice').default('venice'),
-	narrator_temperature: z.number().min(0).max(2).default(NARRATOR_TEMPERATURE),
-	narrator_frequency_penalty: z.number().min(-2).max(2).default(NARRATOR_FREQUENCY_PENALTY),
-	narrator_presence_penalty: z.number().min(-2).max(2).default(NARRATOR_PRESENCE_PENALTY),
-	narrator_max_tokens: z.number().int().min(16).max(8192).default(NARRATOR_MAX_COMPLETION_TOKENS),
-	narrator_top_p: z.number().min(0.01).max(1).default(NARRATOR_TOP_P),
+	narrator_parameters: NarratorParametersInputSchema.optional(),
 	translation_language: z.enum(TRANSLATION_LANGUAGES).default(DEFAULT_TRANSLATION_LANGUAGE),
 	image_style: z.enum(IMAGE_STYLES).optional(),
 	providers: z.strictObject({ venice: ProviderModelsSchema.optional() }),

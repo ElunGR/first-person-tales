@@ -32,7 +32,7 @@ Then open [http://127.0.0.1:3000](http://127.0.0.1:3000). The first launch build
 <details>
 <summary>See Settings</summary>
 
-![Settings: Venice connection, narrator model, and translation language](assets/screenshot-settings.webp)
+![Settings: Venice connection, narrator parameters, and models](assets/screenshot-settings.webp)
 
 </details>
 
@@ -87,6 +87,29 @@ In **Settings → Media → Image style** you can choose from 12 styles, includi
 
 ![A generated spaceship scene attached to a narrator message](assets/screenshot-image-generation.webp)
 
+## Narrator parameters
+
+The narrator request carries a free-form dictionary of sampling fields. **Settings → Narrator parameters** lists them as name/value rows: every row is sent to Venice exactly as written, next to the model name and the messages. There is no hidden conversion and no per-model profile — what you see is what leaves the app.
+
+Two rows are there by default:
+
+| Parameter | Default | What it does |
+| --- | --- | --- |
+| `temperature` | `0.75` | How adventurous the wording is. Lower is more repetitive and predictable, higher is more varied and less controlled. |
+| `max_completion_tokens` | `8000` | The whole budget for one reply, reasoning included. If a reply stops early with a message about this limit, raise it. |
+
+Add any other field your model documents with **Add parameter**. Values are typed once and parsed as you write them: `40` and `1.1` become numbers, `true`/`false` become booleans, `["###"]` becomes an array, anything else stays text. The cross icon on a row removes that parameter from the form, and **Save** writes the settings and closes the dialog. Fields a model does not know may be refused by the provider or quietly ignored; a wrong range can make replies worse. **You choose these values for your model — the app does not validate them against any model's expectations.** Names use lowercase letters, digits and underscore; `model`, `messages` and `stream` belong to the app and cannot be used.
+
+### When the narrator repeats itself
+
+A repetition loop — a reply that starts normally and then repeats the tail of a sentence until it ends — is a property of the model, not a setting the app can switch off. What usually helps, in this order:
+
+1. **Regenerate** the looped reply instead of continuing from it. Continuing feeds the loop back into the context. If you already continued, edit or resend an earlier message to cut it off.
+2. Raise `temperature` towards `0.9`–`1.1`, widen `top_p` to `0.95` or more, and add `presence_penalty 0.5` or `frequency_penalty 0.35`. These are the fields most often recommended against repetition.
+3. If the model still loops, change the model. In the author's long sessions `aion-labs-aion-3-5` and Inkling stayed stable, while `qwen-3-8-27b` and DeepSeek models looped.
+
+Some providers ignore these fields no matter what you set. On DeepSeek, `frequency_penalty` and `presence_penalty` are deprecated, `temperature` has no effect in thinking mode, and `top_p` below `0.95` is raised to `0.95`. Check the model's own documentation before assuming a value took effect.
+
 ## Saves and privacy
 
 The game saves your story automatically on your own computer:
@@ -135,29 +158,25 @@ npm start
 
 Rebuilding matters: when a build already exists, `npm start` launches it without rebuilding, so an update is only visible after `npm run build` and a restart.
 
-**Version compatibility:** this release and all later ones support game saves and local description files created by **1.2.0 or newer**. Files from older versions are not read, not converted, and not repaired automatically; the app reports a save it cannot use instead of guessing.
+**Version compatibility:** this release supports game saves and local description files created by **1.2.0 or newer**. Files from older versions are not read, not converted, and not repaired automatically; the app reports a save it cannot use instead of guessing.
 
 ## Troubleshooting
 
 - **No narrator models appear:** enter the API key, click **Refresh models**, and check that API access is enabled for your Venice account.
 - **HTTP 401 or 402:** check the API key and your available Venice API credits.
-- **A reply stops at `max_completion_tokens`:** raise the narrator token limit in Settings. The default of 8000 covers reasoning as well as the visible answer, so a low limit can run out before an answer is ready — even for a short reply.
+- **A reply stops at the completion budget:** raise `max_completion_tokens` in **Settings → Narrator parameters**. The default of 8000 covers reasoning as well as the visible answer, so a low value can run out before an answer is ready — even for a short reply.
+- **A reply repeats the same words until it ends:** see [When the narrator repeats itself](#when-the-narrator-repeats-itself). Regenerate the reply first, then adjust `temperature`, `top_p` and a penalty field, or switch model.
 - **The key cannot be saved:** make sure your system credential manager is available and unlocked. On Linux without a desktop keychain, use `VENICE_API_KEY`.
 - **The save was rejected as unsupported:** it was created before 1.2.0. Such saves are not compatible. Keep the file, but you cannot import it into this version.
 - **The story is missing after moving the project:** restore your `data/` directory, or import a JSON save to restore history and descriptions together.
 - **A very large story becomes slow, or its JSON export is refused:** export a Markdown archive for reading, stop the app, and back up `data/` and `prompts.local.yaml`. If play continued after the last summary, summarize again, then copy the newest **Story Summary**, start a new game, and use that summary as the first message. Keep the Markdown archive as your complete history: summarizing changes the context, not the visible history.
 - **npm prints funding, deprecation, or low-severity audit notices:** these are not necessarily installation failures. If installation succeeds, continue with `npm start`, and do not run `npm audit fix --force`.
 
-<details>
-<summary>A saved API key stopped working after running tests on an older version</summary>
-
-Older image tests could overwrite or delete the real key. Update the code, rebuild, restart the app, and enter the key once more. Tests now use isolated in-memory credentials and block access to the native keychain.
-
-</details>
-
 ## Project status
 
-Planned feature development is complete. First Person Tales stays a small, focused local game; future changes address concrete bugs.
+**This project is finished and no longer supported.** The last public release is the final one: there is no roadmap, no support commitment, and public issues and pull requests are not answered. It stays online as a readable reference for what a small, transparent, local AI roleplaying client can look like.
+
+The author stopped publishing it for two honest reasons: it never found an audience — it is used by its author alone, and public feedback stayed at zero — and it is ideologically complete, so what remains would be polish rather than design. Nothing here is abandoned mid-feature; the code, its tests, and this guide describe a working version.
 
 **About the code:** this project is a proof of concept, and most of the implementation was written with AI assistance. The author is responsible for the prompts, the architecture, the philosophy of the app, manual testing, and the choice of default models — not for treating this codebase as a professional production system. Judge it as a working demonstration of a local, transparent AI roleplaying client.
 

@@ -13,11 +13,7 @@ const EMPTY_STATE: StatePayload = {
 
 const SAVED_SETTINGS: SettingsPayload = {
 	active_provider: 'venice',
-	narrator_temperature: 0.75,
-	narrator_top_p: 0.95,
-	narrator_frequency_penalty: 0.35,
-	narrator_presence_penalty: 0,
-	narrator_max_tokens: 8000,
+	narrator_parameters: { temperature: 0.75, max_completion_tokens: 8000 },
 	translation_language: 'Russian',
 	image_style: 'none',
 	providers: { venice: { text_model: 'narrator', image_model: 'image' } },
@@ -528,8 +524,53 @@ describe('GamePageController settings status', () => {
 		expect(controller.settings?.image_style).toBe('anime');
 	});
 
-	it('persists image style through Save and restores it from the API response', async () => {
-		const fetchMock = vi.fn().mockResolvedValue(response({ ...SAVED_SETTINGS, image_style: 'anime' }));
+	it('keeps the saved parameters for the next opening instead of the cached payload', async () => {
+		const savedParameters = { temperature: 1.05, max_completion_tokens: 8000, top_k: 40 };
+		// A fresh Response per call: a body can only be read once.
+		const fetchMock = vi.fn(() =>
+			Promise.resolve(response({ ...SAVED_SETTINGS, narrator_parameters: savedParameters }))
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+
+		const opening = controller.openSettings();
+		expect(controller.busy).toBe(true);
+		await opening;
+		expect(controller.settingsDraft?.narrator_parameters).toEqual(savedParameters);
+
+		// A deleted row lives in the draft until the player saves or closes.
+		controller.settingsDraft = {
+			...controller.settingsDraft!,
+			narrator_parameters: { temperature: 1.05, top_k: 40 }
+		};
+		await controller.saveSettings(controller.settingsDraft);
+		// Save writes the settings and closes the dialog, as before.
+		expect(controller.settingsOpen).toBe(false);
+		expect(controller.busy).toBe(false);
+
+		await controller.openSettings();
+		expect(controller.settingsDraft?.narrator_parameters).toEqual(savedParameters);
+	});
+
+	it('drops the edited draft when the dialog is closed without saving', async () => {
+		const fetchMock = vi.fn(() => Promise.resolve(response(SAVED_SETTINGS)));
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+
+		await controller.openSettings();
+		controller.settingsDraft = {
+			...controller.settingsDraft!,
+			narrator_parameters: { temperature: 2 }
+		};
+		controller.closeSettings();
+		expect(controller.settingsOpen).toBe(false);
+		expect(controller.settingsDraft).toBeNull();
+
+		await controller.openSettings();
+		expect(controller.settingsDraft?.narrator_parameters).toEqual(SAVED_SETTINGS.narrator_parameters);
+	});
+
+	it('persists image style through Save and restores it from the API response', async () => {		const fetchMock = vi.fn().mockResolvedValue(response({ ...SAVED_SETTINGS, image_style: 'anime' }));
 		vi.stubGlobal('fetch', fetchMock);
 		const controller = new GamePageController();
 		controller.settingsOpen = true;
@@ -543,7 +584,9 @@ describe('GamePageController settings status', () => {
 		});
 		await vi.waitFor(() => expect(controller.settingsOpen).toBe(false));
 
+		// Save closes the dialog but the draft keeps what the server accepted.
 		expect(controller.settings?.image_style).toBe('anime');
+		expect(controller.settingsDraft?.image_style).toBe('anime');
 		expect(fetchMock).toHaveBeenCalledWith('/settings', expect.objectContaining({
 			method: 'PUT',
 			body: expect.any(String)

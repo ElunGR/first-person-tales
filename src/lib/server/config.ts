@@ -30,10 +30,7 @@ export const MAX_TEXT_INPUT_CHARS: number = 50_000;
 export const MAX_IMPORT_BODY_BYTES: number = 4 * 1024 * 1024;
 export const MAX_IMAGE_RESPONSE_BYTES: number = 20 * 1024 * 1024;
 
-// Role temperatures
-export const NARRATOR_TEMPERATURE: number = 0.75;
-export const NARRATOR_FREQUENCY_PENALTY: number = 0.35;
-export const NARRATOR_PRESENCE_PENALTY: number = 0.0;
-export const NARRATOR_MAX_COMPLETION_TOKENS: number = 8000;
-export const NARRATOR_TOP_P: number = 0.95;
+// Utility temperature for internal, non-narrator requests (translate, improve,
+// image-prompt rewrite, summary). Narrator defaults live with the parameter
+// dictionary in src/lib/narratorParameters.ts so the settings UI can show them.
 export const UTILITY_TEMPERATURE: number = 0.3;

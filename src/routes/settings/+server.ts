@@ -5,8 +5,8 @@ import { SettingsUpdateRequestSchema } from '$lib/server/models';
 import { Mutex } from '$lib/server/mutex';
 import { deleteApiKey, EnvironmentCredentialError, setApiKey } from '$lib/server/keyring';
 import {
-	loadSettings, ProviderSettingsSchema, providerSettings, publicSettings,
-	saveSettings, type AppSettings
+	effectiveNarratorParameters, loadSettings, ProviderSettingsSchema, providerSettings,
+	publicSettings, saveSettings, type AppSettings
 } from '$lib/server/settings';
 
 // Keychain writes may await. Serialize the entire read/merge/save operation so
@@ -30,11 +30,9 @@ export const PUT = apiHandler(async ({ request }) => {
 		}
 		const settings: AppSettings = {
 			active_provider: body.active_provider,
-			narrator_temperature: body.narrator_temperature,
-			narrator_frequency_penalty: body.narrator_frequency_penalty,
-			narrator_presence_penalty: body.narrator_presence_penalty,
-			narrator_max_tokens: body.narrator_max_tokens,
-			narrator_top_p: body.narrator_top_p,
+			// An older client that does not send the dictionary keeps the saved
+			// one; an empty dictionary is a deliberate "send no fields" choice.
+			narrator_parameters: body.narrator_parameters ?? current.narrator_parameters,
 			translation_language: body.translation_language,
 			image_style: body.image_style ?? current.image_style,
 			providers
@@ -56,6 +54,13 @@ export const PUT = apiHandler(async ({ request }) => {
 			}
 		}
 		saveSettings(settings);
-		return json(await publicSettings(settings));
+		// Answer with the effective dictionary (defaults merged in), so the open
+		// form shows exactly the fields the next narrator request will carry.
+		return json(
+			await publicSettings({
+				...settings,
+				narrator_parameters: effectiveNarratorParameters(settings)
+			})
+		);
 	});
 });

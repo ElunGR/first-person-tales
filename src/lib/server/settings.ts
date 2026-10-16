@@ -17,6 +17,13 @@ import {
 	isTranslationLanguage,
 	TRANSLATION_LANGUAGES
 } from '$lib/translationLanguages';
+import {
+	DEFAULT_NARRATOR_PARAMETERS,
+	NarratorParametersSchema,
+	sanitizeNarratorParameters,
+	withDefaultNarratorParameters,
+	type NarratorParameters
+} from '../narratorParameters';
 
 export const PROVIDER_URLS: Record<ProviderName, string> = {
 	venice: 'https://api.venice.ai/api/v1'
@@ -33,11 +40,7 @@ export type ProviderSettings = z.infer<typeof ProviderSettingsSchema>;
 
 export const AppSettingsSchema = z.strictObject({
 	active_provider: z.literal('venice').default('venice'),
-	narrator_temperature: z.number().min(0).max(2).default(config.NARRATOR_TEMPERATURE),
-	narrator_frequency_penalty: z.number().min(-2).max(2).default(config.NARRATOR_FREQUENCY_PENALTY),
-	narrator_presence_penalty: z.number().min(-2).max(2).default(config.NARRATOR_PRESENCE_PENALTY),
-	narrator_max_tokens: z.number().int().min(16).max(8192).default(config.NARRATOR_MAX_COMPLETION_TOKENS),
-	narrator_top_p: z.number().min(0.01).max(1).default(config.NARRATOR_TOP_P),
+	narrator_parameters: NarratorParametersSchema.default({}),
 	translation_language: z.enum(TRANSLATION_LANGUAGES).default(DEFAULT_TRANSLATION_LANGUAGE),
 	image_style: z.enum(IMAGE_STYLES).default(DEFAULT_IMAGE_STYLE),
 	providers: z.record(z.literal('venice'), ProviderSettingsSchema).default({})
@@ -66,7 +69,13 @@ function cloneSettings(value: AppSettings): AppSettings {
 	for (const [name, provider] of Object.entries(value.providers)) {
 		providers[name as ProviderName] = { ...provider };
 	}
-	return { ...value, providers };
+	const narrator_parameters: NarratorParameters = {};
+	for (const [name, item] of Object.entries(value.narrator_parameters ?? {})) {
+		narrator_parameters[name] = Array.isArray(item)
+			? (item.every((entry) => typeof entry === 'number') ? [...(item as number[])] : [...(item as string[])])
+			: item;
+	}
+	return { ...value, providers, narrator_parameters };
 }
 
 export function settingsPath(): string {
@@ -132,23 +141,46 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Map the pre-1.3.0 fixed narrator fields onto dictionary names. */
+const LEGACY_NARRATOR_PARAMETER_FIELDS: Record<string, string> = {
+	narrator_temperature: 'temperature',
+	narrator_frequency_penalty: 'frequency_penalty',
+	narrator_presence_penalty: 'presence_penalty',
+	narrator_max_tokens: 'max_completion_tokens',
+	narrator_top_p: 'top_p'
+};
+
+/**
+ * The narrator dictionary of a settings file: the saved fields, plus any fixed
+ * 1.2.x field converted to its dictionary name, plus the shipped defaults.
+ *
+ * The defaults live in the file once it is written, so this is the single
+ * definition of what a save means: a plain object in, the effective dictionary
+ * out. The settings route answers with the same shape the next request uses.
+ */
+export function effectiveNarratorParameters(
+	raw: Record<string, unknown> | null | undefined
+): NarratorParameters {
+	const source = raw ?? {};
+	const named = sanitizeNarratorParameters(source['narrator_parameters']);
+	const parameters: NarratorParameters = { ...(named ?? {}) };
+	for (const [field, name] of Object.entries(LEGACY_NARRATOR_PARAMETER_FIELDS)) {
+		const legacy = source[field];
+		if (typeof legacy !== 'number' || !Number.isFinite(legacy)) continue;
+		if (name in parameters) continue;
+		parameters[name] = name === 'max_completion_tokens' ? Math.trunc(legacy) : legacy;
+	}
+	return withDefaultNarratorParameters(parameters);
+}
+
 /** Keep Venice fields even if the file still has leftover provider keys. */
 function veniceFromRaw(data: unknown): AppSettings {
 	const raw = isPlainObject(data) ? data : {};
-	const clean: Record<string, unknown> = { active_provider: 'venice' };
+	const clean: Record<string, unknown> = {
+		active_provider: 'venice',
+		narrator_parameters: effectiveNarratorParameters(raw)
+	};
 
-	const temperature = raw['narrator_temperature'];
-	if (typeof temperature === 'number') clean['narrator_temperature'] = temperature;
-	const frequencyPenalty = raw['narrator_frequency_penalty'];
-	if (typeof frequencyPenalty === 'number') clean['narrator_frequency_penalty'] = frequencyPenalty;
-	const presencePenalty = raw['narrator_presence_penalty'];
-	if (typeof presencePenalty === 'number') clean['narrator_presence_penalty'] = presencePenalty;
-	const maxTokens = raw['narrator_max_tokens'];
-	if (typeof maxTokens === 'number' && Number.isInteger(maxTokens)) {
-		clean['narrator_max_tokens'] = maxTokens;
-	}
-	const topP = raw['narrator_top_p'];
-	if (typeof topP === 'number') clean['narrator_top_p'] = topP;
 	const translationLanguage = raw['translation_language'];
 	if (isTranslationLanguage(translationLanguage)) {
 		clean['translation_language'] = translationLanguage;
@@ -288,6 +320,7 @@ export async function publicSettings(settings?: AppSettings): Promise<Record<str
 export function defaultSettings(): AppSettings {
 	return AppSettingsSchema.parse({
 		active_provider: 'venice',
+		narrator_parameters: { ...DEFAULT_NARRATOR_PARAMETERS },
 		providers: { venice: {} }
 	});
 }

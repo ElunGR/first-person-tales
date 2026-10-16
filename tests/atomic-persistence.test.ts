@@ -61,7 +61,7 @@ function writerFixture(writer: Writer): Fixture {
 	if (writer === 'settings') {
 		const previous = defaultSettings();
 		saveSettings(previous);
-		const next = { ...previous, narrator_temperature: 1.1,
+		const next = { ...previous, narrator_parameters: { temperature: 1.1, top_k: 40 },
 			providers: { venice: { text_model: 'fixture-caf\u00e9', image_model: 'fixture-\u2603' } } };
 		return {
 			target: settingsPath(), expected: Buffer.from(JSON.stringify(next, null, 2), 'utf-8'),

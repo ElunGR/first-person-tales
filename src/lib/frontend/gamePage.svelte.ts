@@ -9,6 +9,22 @@ import type { MediaRecord, Message, ModelCatalogs, SettingsPayload, StatePayload
 const CONTEXT_REMINDER_TOKENS = 35000;
 const TOKEN_NUMBER = new Intl.NumberFormat('en-US');
 
+/**
+ * Form values for the settings dialog. The api key is always blank: a key is
+ * only sent when the player types a new one.
+ */
+function draftFromSettings(settings: SettingsPayload): SettingsFormValues {
+	const provider = settings.providers?.['venice'];
+	return {
+		narrator_parameters: { ...settings.narrator_parameters },
+		translation_language: settings.translation_language,
+		text_model: provider?.text_model || '',
+		image_model: provider?.image_model || '',
+		image_style: settings.image_style,
+		api_key: ''
+	};
+}
+
 interface StoryResultPayload {
 	message?: Message;
 	state?: StatePayload;
@@ -47,6 +63,12 @@ export class GamePageController {
 	editingMessageId = $state<string | null>(null);
 	inputDraft = $state('');
 	settingsOpen = $state(false);
+	/**
+	 * The form as the player left it. Saving from inside the dialog does not
+	 * close it, and a reopened dialog must not silently fall back to a cached
+	 * response, so the last saved (or edited) values are kept here.
+	 */
+	settingsDraft = $state<SettingsFormValues | null>(null);
 	characterOpen = $state(false);
 	characterText = $state('');
 	characterGameRevision = $state<string | undefined>(undefined);
@@ -132,6 +154,9 @@ export class GamePageController {
 		this.settings = null;
 		try {
 			await this.loadSettings();
+			// Seed the form from what the server holds; edits made in the dialog
+			// (including a deleted row) stay there until Save or Close.
+			this.settingsDraft = this.settings ? draftFromSettings(this.settings) : null;
 			this.settingsOpen = true;
 		} catch (err) {
 			this.settingsOpen = false;
@@ -139,6 +164,15 @@ export class GamePageController {
 		} finally {
 			this.setBusy(false);
 		}
+	}
+
+	/**
+	 * Close the dialog and drop the unsaved form state, so reopening it shows
+	 * what the server holds rather than an abandoned draft.
+	 */
+	closeSettings(): void {
+		this.settingsOpen = false;
+		this.settingsDraft = null;
 	}
 
 	private async applyEmbeddedState(result: StoryResultPayload | null): Promise<void> {
@@ -490,21 +524,26 @@ export class GamePageController {
 	private async persistSettings(values: SettingsFormValues, closeAfter = true, notify = true): Promise<void> {
 		const payload = {
 			active_provider: 'venice',
-			narrator_temperature: values.narrator_temperature,
-			narrator_top_p: values.narrator_top_p,
-			narrator_frequency_penalty: values.narrator_frequency_penalty,
-			narrator_presence_penalty: values.narrator_presence_penalty,
-			narrator_max_tokens: values.narrator_max_tokens,
+			narrator_parameters: values.narrator_parameters,
 			translation_language: values.translation_language,
 			image_style: values.image_style,
 			providers: { venice: { text_model: values.text_model, image_model: values.image_model } },
 			api_key: values.api_key || null
 		};
-		this.settings = await api<SettingsPayload>('/settings', { method: 'PUT', body: payload });
+		const saved = await api<SettingsPayload>('/settings', { method: 'PUT', body: payload });
+		this.settings = saved;
+		// Keep the form on what the server just accepted (it merges the shipped
+		// defaults and normalizes names), instead of the values that were sent.
+		this.settingsDraft = draftFromSettings(saved);
 		if (closeAfter) this.settingsOpen = false;
 		if (notify) toast('Settings saved');
 	}
 
+	/**
+	 * Save from the dialog: write the settings and close the dialog, as before.
+	 * The draft is kept on what the server accepted, so reopening the dialog
+	 * shows the saved values rather than a stale cached payload.
+	 */
 	async saveSettings(values: SettingsFormValues): Promise<void> {
 		if (this.busy) return;
 		this.setBusy(true, 'Saving settings…');

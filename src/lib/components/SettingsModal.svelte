@@ -1,19 +1,20 @@
 <script lang="ts">
 	import ModalFrame from './ModalFrame.svelte';
-	import type { ModelCatalogs, SettingsPayload } from '$lib/frontend/types';
+	import type { ModelCatalogs, NarratorParameters, SettingsPayload } from '$lib/frontend/types';
 	import { DEFAULT_IMAGE_STYLE, IMAGE_STYLES, IMAGE_STYLE_LABELS, type ImageStyle } from '$lib/imageStyles';
 	import {
 		DEFAULT_TRANSLATION_LANGUAGE,
 		TRANSLATION_LANGUAGES,
 		type TranslationLanguage
 	} from '$lib/translationLanguages';
+	import {
+		describeParameterProblem,
+		parameterValueToText,
+		parseParameterValueText
+	} from '$lib/narratorParameters';
 
 	export interface SettingsFormValues {
-		narrator_temperature: number;
-		narrator_top_p: number;
-		narrator_frequency_penalty: number;
-		narrator_presence_penalty: number;
-		narrator_max_tokens: number;
+		narrator_parameters: NarratorParameters;
 		translation_language: TranslationLanguage;
 		text_model: string;
 		image_model: string;
@@ -24,6 +25,7 @@
 	let {
 		open,
 		settings,
+		draft,
 		catalogs,
 		modelStatus,
 		busy,
@@ -33,6 +35,8 @@
 	}: {
 		open: boolean;
 		settings: SettingsPayload | null;
+		/** Last saved or edited form values; preferred over the cached payload. */
+		draft: SettingsFormValues | null;
 		catalogs: ModelCatalogs;
 		modelStatus: string;
 		busy: boolean;
@@ -41,26 +45,50 @@
 		onRefreshModels: (payload: SettingsFormValues) => void;
 	} = $props();
 
+	interface ParameterRow {
+		key: string;
+		/** Edited freely; only lower-case letters, digits and underscore can be saved. */
+		name: string;
+		value: string;
+	}
+
 	let apiKey = $state('');
 	let textModel = $state('');
 	let imageModel = $state('');
 	let imageStyle = $state<ImageStyle>(DEFAULT_IMAGE_STYLE);
-	let temperature = $state(0.75);
-	let topP = $state(0.95);
-	let frequencyPenalty = $state(0.35);
-	let presencePenalty = $state(0);
-	let maxTokens = $state(8000);
 	let translationLanguage = $state<TranslationLanguage>(DEFAULT_TRANSLATION_LANGUAGE);
+	let parameterRows = $state<ParameterRow[]>([]);
+	let rowSequence = 0;
 
-	// Sync form fields whenever settings/catalogs change or the modal opens.
+	function nextKey(): string {
+		rowSequence += 1;
+		return `parameter-${rowSequence}`;
+	}
+
+	function rowsFromParameters(parameters: NarratorParameters | undefined): ParameterRow[] {
+		return Object.entries(parameters ?? {}).map(([name, value]) => ({
+			key: nextKey(),
+			name,
+			value: parameterValueToText(value)
+		}));
+	}
+
+	// Sync form fields whenever the dialog opens or the edited values change.
+	// A saved-in-place draft wins over the cached payload: saving no longer
+	// closes the dialog, so reopening it must show what was last accepted.
 	$effect(() => {
 		if (!settings || !open) return;
+		if (draft) {
+			parameterRows = rowsFromParameters(draft.narrator_parameters);
+			translationLanguage = draft.translation_language;
+			textModel = draft.text_model;
+			imageModel = draft.image_model;
+			imageStyle = draft.image_style;
+			apiKey = '';
+			return;
+		}
 		const cfg = settings.providers['venice'] || {};
-		temperature = settings.narrator_temperature;
-		topP = settings.narrator_top_p;
-		frequencyPenalty = settings.narrator_frequency_penalty;
-		presencePenalty = settings.narrator_presence_penalty;
-		maxTokens = settings.narrator_max_tokens;
+		parameterRows = rowsFromParameters(settings.narrator_parameters);
 		translationLanguage = settings.translation_language;
 		textModel = cfg.text_model || '';
 		imageModel = cfg.image_model || '';
@@ -114,17 +142,58 @@
 			: 'Refresh the catalog to check capabilities'
 	);
 
+	/** One message per filled row: what is wrong with the name or the value. */
+	const rowProblems = $derived.by(() => {
+		const problems = new Map<string, string>();
+		const seen = new Set<string>();
+		for (const row of parameterRows) {
+			const value = parseParameterValueText(row.value);
+			const problem =
+				describeParameterProblem(row.name, 'error' in value ? undefined : value.value) ??
+				('error' in value ? value.error : null);
+			if (problem) {
+				problems.set(row.key, problem);
+				continue;
+			}
+			const normalized = row.name.trim().toLowerCase();
+			if (seen.has(normalized)) {
+				problems.set(row.key, `duplicate parameter "${normalized}"`);
+				continue;
+			}
+			seen.add(normalized);
+		}
+		return problems;
+	});
+
+	const hasProblems = $derived(rowProblems.size > 0);
+
+	/** Sent to the server; only complete, correctly typed rows are included. */
+	const parsedParameters = $derived.by(() => {
+		const parameters: NarratorParameters = {};
+		for (const row of parameterRows) {
+			if (rowProblems.has(row.key)) continue;
+			const parsed = parseParameterValueText(row.value);
+			if ('error' in parsed) continue;
+			parameters[row.name.trim().toLowerCase()] = parsed.value;
+		}
+		return parameters;
+	});
+
+	function addParameter(): void {
+		parameterRows = [...parameterRows, { key: nextKey(), name: '', value: '' }];
+	}
+
+	function removeParameter(key: string): void {
+		parameterRows = parameterRows.filter((row) => row.key !== key);
+	}
+
 	function save(): void {
 		onSave(formValues());
 	}
 
-	function formValues() {
+	function formValues(): SettingsFormValues {
 		return {
-			narrator_temperature: Number(temperature),
-			narrator_top_p: Number(topP),
-			narrator_frequency_penalty: Number(frequencyPenalty),
-			narrator_presence_penalty: Number(presencePenalty),
-			narrator_max_tokens: Number(maxTokens),
+			narrator_parameters: parsedParameters,
 			translation_language: translationLanguage,
 			text_model: textModel,
 			image_model: imageModel,
@@ -139,7 +208,7 @@
 	id="settingsModal"
 	label="Model settings"
 	title="Settings"
-	subtitle="Venice.ai: separate narrator and image models"
+	subtitle="Venice.ai: narrator parameters and models"
 	cardClass="settings-card"
 	{onClose}
 >
@@ -183,12 +252,65 @@
 								<option value={language}>{language}</option>
 							{/each}
 						</select><span class="capability-note">Used by the Translate button</span></label>
-					<label>Temperature<input type="number" min="0" max="2" step="0.05" bind:value={temperature} /></label>
-					<label>Top P<input type="number" min="0.01" max="1" step="0.01" bind:value={topP} /></label>
-					<label>Frequency penalty<input type="number" min="-2" max="2" step="0.05" bind:value={frequencyPenalty} /></label>
-					<label>Presence penalty<input type="number" min="-2" max="2" step="0.05" bind:value={presencePenalty} /></label>
-					<label>Max completion tokens (total)<input type="number" min="16" max="8192" step="1" bind:value={maxTokens} /></label>
 				</div>
+			</section>
+			<section class="settings-section">
+				<h3>Narrator parameters</h3>
+				<div class="parameter-table" role="group" aria-label="Narrator parameters">
+					<div class="parameter-head" aria-hidden="true">
+						<span>Name</span><span>Value</span><span></span>
+					</div>
+					{#each parameterRows as row (row.key)}
+						{@const problem = rowProblems.get(row.key)}
+						<div class="parameter-row" class:invalid={problem}>
+							<label class="parameter-field">
+								<span class="visually-hidden">Parameter name</span>
+								<input
+									class="parameter-name"
+									type="text"
+									spellcheck="false"
+									autocomplete="off"
+									placeholder="temperature"
+									aria-invalid={problem ? 'true' : undefined}
+									bind:value={row.name}
+								/>
+							</label>
+							<label class="parameter-field">
+								<span class="visually-hidden">Parameter value</span>
+								<input
+									class="parameter-value"
+									type="text"
+									spellcheck="false"
+									autocomplete="off"
+									placeholder="0.75"
+									aria-invalid={problem ? 'true' : undefined}
+									bind:value={row.value}
+								/>
+							</label>
+							<div class="parameter-actions">
+								<button
+									class="ghost parameter-icon"
+									type="button"
+									disabled={busy}
+									title="Delete this parameter"
+									aria-label={`Delete ${row.name.trim() || 'this parameter'}`}
+									onclick={() => removeParameter(row.key)}
+								>
+									<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+										<path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+									</svg>
+								</button>
+							</div>
+							{#if problem}<span class="field-note warning parameter-problem" role="alert">{problem}</span>{/if}
+						</div>
+					{/each}
+				</div>
+				<button class="ghost parameter-add" type="button" disabled={busy} onclick={addParameter}
+					>Add parameter</button
+				>
+				{#if hasProblems}
+					<p class="field-note warning" role="alert">Fix the highlighted parameters before saving.</p>
+				{/if}
 			</section>
 			<section class="settings-section">
 				<h3>Media</h3>
@@ -211,6 +333,6 @@
 		{/if}
 	{/snippet}
 	{#snippet footer()}
-		{#if settings}<button type="button" disabled={busy} onclick={save}>Save</button>{/if}
+		{#if settings}<button type="button" disabled={busy || hasProblems} onclick={save}>Save</button>{/if}
 	{/snippet}
 </ModalFrame>

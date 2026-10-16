@@ -75,13 +75,31 @@ export interface LLMClientOptions {
 }
 
 export interface CompletionOptions {
-	temperature?: number | null;
-	frequencyPenalty?: number | null;
-	presencePenalty?: number | null;
-	maxCompletionTokens?: number | null;
-	maxTokens?: number | null;
-	topP?: number | null;
+	/**
+	 * Sampling fields sent to the provider as written. Keys such as model,
+	 * messages and stream are ignored so a hand-written parameter cannot
+	 * replace the request itself.
+	 */
+	parameters?: Record<string, unknown> | null;
 	signal?: AbortSignal;
+}
+
+/** Provider fields the app owns; a player parameter must never override them. */
+const RESERVED_PAYLOAD_KEYS = new Set(['model', 'messages', 'stream']);
+
+function narratorPayloadParameters(options: CompletionOptions): Record<string, unknown> {
+	const parameters: Record<string, unknown> = {};
+	for (const [name, value] of Object.entries(options.parameters ?? {})) {
+		if (RESERVED_PAYLOAD_KEYS.has(name)) continue;
+		if (value === null || value === undefined) continue;
+		parameters[name] = value;
+	}
+	return parameters;
+}
+
+/** Name the limit the player actually set, so the error points at that row. */
+function completionLimitName(parameters: Record<string, unknown>): string {
+	return 'max_completion_tokens' in parameters ? 'max_completion_tokens' : 'max_tokens';
 }
 
 /** Structural interface satisfied by LLMClient; lets tests inject fakes. */
@@ -151,23 +169,16 @@ export class LLMClient {
 		if (!this.model) {
 			throw new LLMError('text model is not configured; choose a model in Settings');
 		}
-		if (options.maxCompletionTokens != null && options.maxTokens != null) {
-			throw new Error('pass max_completion_tokens instead of both token limit names');
-		}
-		const completionLimit = options.maxCompletionTokens ?? options.maxTokens ?? null;
 		this.lastUsage = null;
 		const reasoning = reasoningOptionsPayload(this.supportsReasoningEffort, this.reasoningEffortOptions);
+		const parameters = narratorPayloadParameters(options);
 		const payload: Record<string, unknown> = {
 			model: this.model,
 			messages,
-			stream: false
+			stream: false,
+			...parameters
 		};
 		if (reasoning !== null) payload['reasoning'] = reasoning;
-		if (options.temperature != null) payload['temperature'] = options.temperature;
-		if (options.frequencyPenalty != null) payload['frequency_penalty'] = options.frequencyPenalty;
-		if (options.presencePenalty != null) payload['presence_penalty'] = options.presencePenalty;
-		if (completionLimit != null) payload['max_completion_tokens'] = completionLimit;
-		if (options.topP != null) payload['top_p'] = options.topP;
 
 		const response = await this.postOnce(
 			`${this.apiServer.replace(/\/+$/, '')}/chat/completions`,
@@ -194,7 +205,9 @@ export class LLMClient {
 		}
 		const choice = choices[0] as Record<string, unknown>;
 		if (String(choice['finish_reason'] ?? '').toLowerCase() === 'length') {
-			throw new LLMError('completion stopped at max_completion_tokens; increase the total budget');
+			throw new LLMError(
+				`completion stopped at ${completionLimitName(parameters)}; increase the total budget`
+			);
 		}
 		const message = choice['message'];
 		if (typeof message !== 'object' || message === null) {

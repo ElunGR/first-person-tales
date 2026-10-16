@@ -90,10 +90,11 @@
 <SettingsModal
 	open={game.settingsOpen}
 	settings={game.settings}
+	draft={game.settingsDraft}
 	catalogs={game.modelCatalogs}
 	modelStatus={game.modelStatus}
 	busy={game.busy}
-	onClose={() => (game.settingsOpen = false)}
+	onClose={() => game.closeSettings()}
 	onSave={(values) => game.saveSettings(values)}
 	onRefreshModels={(values) => game.refreshModels(values)}
 />

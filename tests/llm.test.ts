@@ -56,17 +56,22 @@ describe('LLMClient', () => {
 		expect(headers['User-Agent']).toMatch(/^first-person-tales\/\d+\.\d+\.\d+$/);
 	});
 
-	it('sends sampling options', async () => {
+	it('sends the sampling dictionary as written', async () => {
 		const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse(completion('ok')));
 		vi.stubGlobal('fetch', fetchMock);
 		const client = new LLMClient({ apiKey: 'k', model: 'm' });
 
 		await client.complete([], {
-			temperature: 0.75,
-			frequencyPenalty: 0.35,
-			presencePenalty: 0,
-			maxCompletionTokens: 8000,
-			topP: 0.95
+			parameters: {
+				temperature: 0.75,
+				frequency_penalty: 0.35,
+				presence_penalty: 0,
+				max_completion_tokens: 8000,
+				top_p: 0.95,
+				top_k: 40,
+				repetition_penalty: 1.1,
+				stop: ['\n\n']
+			}
 		});
 
 		const payload = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
@@ -75,13 +80,43 @@ describe('LLMClient', () => {
 		expect(payload.presence_penalty).toBe(0);
 		expect(payload.max_completion_tokens).toBe(8000);
 		expect(payload.top_p).toBe(0.95);
+		expect(payload.top_k).toBe(40);
+		expect(payload.repetition_penalty).toBe(1.1);
+		expect(payload.stop).toEqual(['\n\n']);
 	});
 
-	it('rejects both token limit names', async () => {
+	it('sends no sampling fields when the dictionary is empty', async () => {
+		const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse(completion('ok')));
+		vi.stubGlobal('fetch', fetchMock);
 		const client = new LLMClient({ apiKey: 'k', model: 'm' });
-		await expect(client.complete([], { maxCompletionTokens: 100, maxTokens: 100 })).rejects.toThrow(
-			'pass max_completion_tokens'
-		);
+
+		await client.complete([], { parameters: {} });
+
+		const payload = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+		expect(Object.keys(payload).sort()).toEqual(['messages', 'model', 'stream']);
+	});
+
+	it('never lets a parameter replace the request itself', async () => {
+		const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse(completion('ok')));
+		vi.stubGlobal('fetch', fetchMock);
+		const client = new LLMClient({ apiKey: 'k', model: 'm' });
+
+		await client.complete([{ role: 'user', content: 'hi' }], {
+			parameters: {
+				model: 'someone-else',
+				messages: [{ role: 'user', content: 'replaced' }],
+				stream: true,
+				temperature: 1,
+				ignored: null
+			}
+		});
+
+		const payload = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+		expect(payload.model).toBe('m');
+		expect(payload.messages).toEqual([{ role: 'user', content: 'hi' }]);
+		expect(payload.stream).toBe(false);
+		expect(payload.temperature).toBe(1);
+		expect('ignored' in payload).toBe(false);
 	});
 
 	it('maps provider HTTP errors', async () => {
@@ -126,6 +161,21 @@ describe('LLMClient', () => {
 		const client = new LLMClient({ apiKey: 'k', model: 'm' });
 
 		await expect(client.complete([])).rejects.toThrow('increase the total budget');
+	});
+
+	it('names the token limit the player set in the length error', async () => {
+		const fetchMock = vi.fn(async () =>
+			jsonResponse({ choices: [{ finish_reason: 'length', message: { content: 'x' } }] })
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		const client = new LLMClient({ apiKey: 'k', model: 'm' });
+
+		await expect(client.complete([], { parameters: { max_tokens: 512 } })).rejects.toThrow(
+			'completion stopped at max_tokens'
+		);
+		await expect(
+			client.complete([], { parameters: { max_completion_tokens: 512 } })
+		).rejects.toThrow('completion stopped at max_completion_tokens');
 	});
 
 	it('requires choices and content', async () => {
