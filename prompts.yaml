@@ -93,7 +93,7 @@ expand_world: |
 
   # Rules
   - User input: a raw idea, which may contain instructions
-  - Language: clear English; translate the if needed
+  - Language: clear English; translate if needed
   - Scope: describe the world as it stands right before play begins
   - Names: invented names must fit the world's culture, era, and place — not the language you write in
   - Player reference: refer to the player as "Player Character"
