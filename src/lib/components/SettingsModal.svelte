@@ -12,6 +12,12 @@
 		parameterValueToText,
 		parseParameterValueText
 	} from '$lib/narratorParameters';
+	import {
+		imageModelNote,
+		modelDetails,
+		modelInfoFromRow,
+		narratorModelNote
+	} from '$lib/modelInfo';
 
 	export interface SettingsFormValues {
 		narrator_parameters: NarratorParameters;
@@ -131,7 +137,14 @@
 	}
 
 	const selectedImageRow = $derived((catalogs.image || []).find((row) => row.id === imageModel));
-	const imageCapability = $derived(
+	const selectedTextRow = $derived((catalogs.text || []).find((row) => row.id === textModel));
+	const selectedTextInfo = $derived(selectedTextRow ? modelInfoFromRow(selectedTextRow) : null);
+	const selectedImageInfo = $derived(selectedImageRow ? modelInfoFromRow(selectedImageRow) : null);
+	const textModelNote = $derived(narratorModelNote(selectedTextInfo));
+	const textModelTitle = $derived(modelDetails(selectedTextInfo));
+	const imageModelNoteText = $derived(imageModelNote(selectedImageInfo));
+	const imageModelTitle = $derived(modelDetails(selectedImageInfo));
+	const imageGeometry = $derived(
 		selectedImageRow
 			? [
 					selectedImageRow.resolutions?.join(' / '),
@@ -141,6 +154,8 @@
 					.join(' · ') || 'Parameters determined by provider'
 			: 'Refresh the catalog to check capabilities'
 	);
+	/** Geometry is a separate fact; it is only appended when the note has content. */
+	const imageNoteSuffix = $derived(imageModelNoteText.endsWith('privacy') ? '' : ` · ${imageGeometry}`);
 
 	/** One message per filled row: what is wrong with the name or the value. */
 	const rowProblems = $derived.by(() => {
@@ -246,7 +261,7 @@
 							{#each textOptions as row (row.id)}
 								<option value={row.id}>{row.name === row.id ? row.id : `${row.name} — ${row.id}`}</option>
 							{/each}
-						</select><span class="capability-note">The model continues the visible story</span></label>
+						</select><span class="capability-note" title={textModelTitle}>{textModelNote}</span></label>
 					<label>Translation language<select bind:value={translationLanguage}>
 							{#each TRANSLATION_LANGUAGES as language}
 								<option value={language}>{language}</option>
@@ -282,7 +297,7 @@
 									type="text"
 									spellcheck="false"
 									autocomplete="off"
-									placeholder="0.75"
+									placeholder="1"
 									aria-invalid={problem ? 'true' : undefined}
 									bind:value={row.value}
 								/>
@@ -320,7 +335,11 @@
 							{#each imageOptions as row (row.id)}
 								<option value={row.id}>{row.name === row.id ? row.id : `${row.name} — ${row.id}`}</option>
 							{/each}
-						</select><span class="capability-note">{imageCapability}</span></label>
+						</select><span
+							class="capability-note"
+							title={`${imageGeometry}. ${imageModelTitle}`}
+							>{imageModelNoteText}{imageNoteSuffix}</span
+						></label>
 					<label>Image style<select bind:value={imageStyle}>
 							{#each IMAGE_STYLES as style}
 								<option value={style}>{IMAGE_STYLE_LABELS[style]}</option>

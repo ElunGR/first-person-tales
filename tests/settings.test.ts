@@ -54,12 +54,13 @@ describe('settings recovery', () => {
 		const settings = loadSettings();
 		expect(settings.active_provider).toBe('venice');
 		expect(settings.narrator_parameters).toEqual({
-			temperature: 0.75,
+			temperature: 1,
+			top_p: 0.95,
 			max_completion_tokens: 8000
 		});
 		expect(settings.translation_language).toBe('Russian');
 		expect(settings.image_style).toBe('none');
-		expect(providerSettings(settings).text_model).toBe('aion-labs-aion-3-5');
+		expect(providerSettings(settings).text_model).toBe('glm-5-3-flash-uncensored');
 		expect(providerSettings(settings).image_model).toBe('krea-2-turbo');
 	});
 
@@ -96,8 +97,8 @@ describe('settings recovery', () => {
 		);
 
 		const settings = loadSettings();
-		expect(settings.narrator_parameters['temperature']).toBeCloseTo(0.75);
-		expect(providerSettings(settings).text_model).toBe('aion-labs-aion-3-5');
+		expect(settings.narrator_parameters['temperature']).toBeCloseTo(1);
+		expect(providerSettings(settings).text_model).toBe('glm-5-3-flash-uncensored');
 		expect(providerSettings(settings).image_model).toBe('krea-2-turbo');
 	});
 
@@ -148,6 +149,7 @@ describe('settings recovery', () => {
 		const settings = loadSettings();
 		expect(settings.narrator_parameters).toEqual({
 			temperature: 0.8,
+			top_p: 0.95,
 			max_completion_tokens: 8000,
 			top_k: 40,
 			stop: ['###']
@@ -186,6 +188,7 @@ describe('settings recovery', () => {
 		expect(providerSettings(reloaded).image_model).toBe('flux');
 		expect(reloaded.narrator_parameters).toEqual({
 			temperature: 1.1,
+			top_p: 0.95,
 			max_completion_tokens: 8000,
 			top_k: 40
 		});
@@ -499,6 +502,7 @@ describe('settings route credential policy', () => {
 		resetSettingsStateForTests();
 		expect(loadSettings().narrator_parameters).toEqual({
 			temperature: 1.2,
+			top_p: 0.95,
 			top_k: 40,
 			max_completion_tokens: 8000
 		});
@@ -533,6 +537,7 @@ describe('narrator parameter route policy', () => {
 		// the shipped defaults back in.
 		expect(loadSettings().narrator_parameters).toEqual({
 			temperature: 0.9,
+			top_p: 0.95,
 			top_k: 40,
 			stop: ['###'],
 			max_completion_tokens: 8000
@@ -551,7 +556,7 @@ describe('narrator parameter route policy', () => {
 		await putNarratorParameters({ narrator_parameters: { temperature: 1.4 } });
 		const cleared = await putNarratorParameters({ narrator_parameters: {} });
 		expect(cleared.status).toBe(200);
-		const defaults = { temperature: 0.75, max_completion_tokens: 8000 };
+		const defaults = { temperature: 1, top_p: 0.95, max_completion_tokens: 8000 };
 		expect((await cleared.json()).narrator_parameters).toEqual(defaults);
 		resetSettingsStateForTests();
 		expect(loadSettings().narrator_parameters).toEqual(defaults);
@@ -567,7 +572,8 @@ describe('narrator parameter route policy', () => {
 		expect(response.status).toBe(422);
 		resetSettingsStateForTests();
 		expect(loadSettings().narrator_parameters).toEqual({
-			temperature: 0.75,
+			temperature: 1,
+			top_p: 0.95,
 			max_completion_tokens: 8000
 		});
 	});

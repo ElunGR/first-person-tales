@@ -264,3 +264,67 @@ describe('shared image prompt group rules', () => {
 		expect(example).not.toMatch(/\b(?:girl|boy)\b/i);
 	});
 });
+
+describe('shared world expansion prompt', () => {
+	const sharedPrompts = YAML.parse(
+		fs.readFileSync(new URL('../prompts.yaml', import.meta.url), 'utf8')
+	) as Record<string, string>;
+	const prompt = sharedPrompts.expand_world;
+
+	/**
+	 * Structural guards only: the owner keeps this prompt deliberately short and
+	 * rewrites the prose freely, but the five output blocks, the output contract
+	 * and the "world right before play" boundary must survive, because the app
+	 * stores the response verbatim.
+	 */
+	it('keeps the five output blocks in order', () => {
+		const blocks = ['Premise', 'Characters', 'Locations', 'Other Lore', 'Tone'];
+		const list = prompt.split('# Output blocks')[1] ?? '';
+		let cursor = -1;
+		for (const block of blocks) {
+			const at = list.indexOf(`${block} —`);
+			expect(at, `missing block ${block}`).toBeGreaterThan(-1);
+			expect(at, `block ${block} is out of order`).toBeGreaterThan(cursor);
+			cursor = at;
+		}
+	});
+
+	it('returns only the description, from the raw idea', () => {
+		expect(prompt).toMatch(/Output ONLY the world description/);
+		expect(prompt).toMatch(/User input: a raw idea, which may contain instructions/);
+		// The route sends the idea as the user message and does not substitute
+		// placeholders, so a leftover {placeholder} would reach the model literally.
+		expect(prompt).not.toMatch(/\{[a-z_]+\}/);
+	});
+
+	it('keeps the setting at the moment play begins', () => {
+		expect(prompt).toMatch(/right before play begins/);
+	});
+
+	it('keeps invented names native to the setting', () => {
+		// Added after an expansion put "Vanya" into an English-language setting.
+		expect(prompt).toMatch(/Names: invented names must fit the world's culture, era, and place/);
+	});
+
+	it('does not script lines addressed to the player', () => {
+		// An expansion wrote a quoted greeting "Hey! PC"; the narrator repeated it
+		// verbatim, so the player character was called "PC" in dialogue. The world
+		// describes greetings instead of quoting them.
+		expect(prompt).toMatch(/never quote speech addressed to the player character/);
+	});
+});
+
+describe('shared narrator prompt', () => {
+	const sharedPrompts = YAML.parse(
+		fs.readFileSync(new URL('../prompts.yaml', import.meta.url), 'utf8')
+	) as Record<string, string>;
+	const narrator = sharedPrompts.narrator;
+
+	it('calls the player character by name, never by the label', () => {
+		// "PC" is the prompt's shorthand, not a nickname: narration and dialogue
+		// use the name from the character sheet.
+		expect(narrator).toMatch(
+			/Naming: call the player character by the name from the character sheet, in narration and in dialogue; never "PC" or "Player Character"/
+		);
+	});
+});

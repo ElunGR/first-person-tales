@@ -113,6 +113,7 @@
 	world={game.worldText}
 	onClose={() => (game.worldOpen = false)}
 	onSave={(content) => game.saveWorld(content)}
+	onExpand={(idea) => game.expandWorldIdea(idea)}
 />
 
 <MediaModal

@@ -99,9 +99,10 @@ describe('recovery of a hand-edited settings file', () => {
 });
 
 describe('defaults', () => {
-	it('ships temperature and the completion budget only', () => {
+	it('ships temperature, top_p and the completion budget', () => {
 		expect(DEFAULT_NARRATOR_PARAMETERS).toEqual({
-			temperature: 0.75,
+			temperature: 1,
+			top_p: 0.95,
 			max_completion_tokens: 8000
 		});
 	});
@@ -109,6 +110,7 @@ describe('defaults', () => {
 	it('lets a saved value replace a default and adds unknown fields', () => {
 		expect(withDefaultNarratorParameters({ temperature: 1.1, top_k: 40 })).toEqual({
 			temperature: 1.1,
+			top_p: 0.95,
 			max_completion_tokens: 8000,
 			top_k: 40
 		});

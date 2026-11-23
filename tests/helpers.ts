@@ -56,6 +56,7 @@ export function useTempPromptRoot() {
 				'image_rewrite_user: "SUBJECT: {subject}\\nTRANSCRIPT:\\n{transcript}"',
 				'translate: "TRANSLATE_SYSTEM_SENTINEL {translation_language}"',
 				'improve: IMPROVE_SYSTEM_SENTINEL',
+				'expand_world: EXPAND_WORLD_SENTINEL',
 				''
 			].join('\n'),
 			'utf-8'

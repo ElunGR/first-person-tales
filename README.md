@@ -27,7 +27,9 @@ Then open [http://127.0.0.1:3000](http://127.0.0.1:3000). The first launch build
 
 1. Open **Settings**.
 2. Paste your API key and click **Refresh models**. The key is stored in your system credential manager, not in the project files.
-3. Pick a narrator model and an image model, then click **Save**. The defaults are `aion-labs-aion-3-5` and `krea-2-turbo`; if one of them is unavailable, choose another from the refreshed list. Saving never replaces a model you already selected.
+3. Pick a narrator model and an image model, then click **Save**. The defaults are `glm-5-3-flash-uncensored` and `krea-2-turbo`; if one of them is unavailable, choose another from the refreshed list. Saving never replaces a model you already selected.
+
+After a refresh, each picker shows what Venice reports about the selected model: price, privacy mode, and whether it is uncensored or in beta. Hover the line for the rest — context size, the reply limit, the cached-input price, and the date Venice plans to remove the model. `Private` means the provider keeps no prompt content; `Anonymous` hides your account but the prompt still reaches the provider. Before the first refresh of a session the line says so instead of guessing, and the numbers are Venice's, not the app's own.
 
 <details>
 <summary>See Settings</summary>
@@ -38,7 +40,7 @@ Then open [http://127.0.0.1:3000](http://127.0.0.1:3000). The first launch build
 
 ### 3. Begin a story
 
-Start with the included character **Rowan**, or open **Character** and write your own. **World** is optional setting material; leave it empty and establish the world through play instead.
+Start with the included character **Rowan**, or open **Character** and write your own. **World** is optional setting material; leave it empty and establish the world through play instead, or write a short idea and click **Expand idea**.
 
 Write an opening action and click **Send**:
 
@@ -52,6 +54,8 @@ Use `[OOC: ...]` when you want to give the narrator instructions outside your ch
 ```text
 [OOC: Let's imagine that our character Rowan isekai'd into a sci-fi world as a crew member aboard a spaceship.]
 ```
+
+If **World** already describes the setting, you do not have to write an opening action: send `[OOC: start the scenario]` and the narrator opens the story from your world and character descriptions.
 
 ![Rowan wakes aboard the CSS Meridian after an OOC instruction](assets/screenshot-narration.webp)
 
@@ -79,6 +83,8 @@ Use one character per story: changing identity halfway through can contradict ea
 
 Both live in your Git-ignored `prompts.local.yaml` and take effect without restarting. Limits: **10,000 characters** for the character and **30,000 characters** for the world, counted exactly as you typed them. The editor shows a small counter in the lower right corner; if the text is over the limit, **Save** reports it and keeps your text so you can shorten it yourself. Nothing you write is rewritten: your own Markdown, including first-level headings (`#`), is sent to the narrator as you wrote it, and the system templates that frame it stay in `prompts.yaml`. If another tab loads a different game, reopen the description editor before saving.
 
+**Expand idea** in the World editor turns a short seed — a city, a premise, a single image — into a full setting description in one explicit text request. It replaces the text in the editor, never the saved world: **Undo** restores what you had, and nothing is written to `prompts.local.yaml` until you press **Save**. The result is a setting guide, not a story: it describes the world as play begins and leaves what your character does to you. Like every AI action here, it runs only when you ask, and it never retries on its own.
+
 ### Illustrating a scene
 
 Click **Image** on a narrator message and describe the subject or moment you want to see: a person, a group interacting, an item, or a location. Prepare the prompt, edit it if you want, then confirm generation. The result is attached to that message, where you can view it at full size or delete it.
@@ -91,11 +97,12 @@ In **Settings → Media → Image style** you can choose from 12 styles, includi
 
 The narrator request carries a free-form dictionary of sampling fields. **Settings → Narrator parameters** lists them as name/value rows: every row is sent to Venice exactly as written, next to the model name and the messages. There is no hidden conversion and no per-model profile — what you see is what leaves the app.
 
-Two rows are there by default:
+Three rows are there by default:
 
 | Parameter | Default | What it does |
 | --- | --- | --- |
-| `temperature` | `0.75` | How adventurous the wording is. Lower is more repetitive and predictable, higher is more varied and less controlled. |
+| `temperature` | `1` | How adventurous the wording is. Lower is more repetitive and predictable, higher is more varied and less controlled. |
+| `top_p` | `0.95` | Nucleus sampling: keeps the reply inside the most likely tokens. `1` considers everything; `0.95` is a common starting point for long role-play. |
 | `max_completion_tokens` | `8000` | The whole budget for one reply, reasoning included. If a reply stops early with a message about this limit, raise it. |
 
 Add any other field your model documents with **Add parameter**. Values are typed once and parsed as you write them: `40` and `1.1` become numbers, `true`/`false` become booleans, `["###"]` becomes an array, anything else stays text. The cross icon on a row removes that parameter from the form, and **Save** writes the settings and closes the dialog. Fields a model does not know may be refused by the provider or quietly ignored; a wrong range can make replies worse. **You choose these values for your model — the app does not validate them against any model's expectations.** Names use lowercase letters, digits and underscore; `model`, `messages` and `stream` belong to the app and cannot be used.
@@ -105,7 +112,7 @@ Add any other field your model documents with **Add parameter**. Values are type
 A repetition loop — a reply that starts normally and then repeats the tail of a sentence until it ends — is a property of the model, not a setting the app can switch off. What usually helps, in this order:
 
 1. **Regenerate** the looped reply instead of continuing from it. Continuing feeds the loop back into the context. If you already continued, edit or resend an earlier message to cut it off.
-2. Raise `temperature` towards `0.9`–`1.1`, widen `top_p` to `0.95` or more, and add `presence_penalty 0.5` or `frequency_penalty 0.35`. These are the fields most often recommended against repetition.
+2. Keep `temperature` around `1`, `top_p` at `0.95` or higher, and add `presence_penalty 0.5` or `frequency_penalty 0.35`. These are the fields most often recommended against repetition.
 3. If the model still loops, change the model. In the author's long sessions `aion-labs-aion-3-5` and Inkling stayed stable, while `qwen-3-8-27b` and DeepSeek models looped.
 
 Some providers ignore these fields no matter what you set. On DeepSeek, `frequency_penalty` and `presence_penalty` are deprecated, `temperature` has no effect in thinking mode, and `top_p` below `0.95` is raised to `0.95`. Check the model's own documentation before assuming a value took effect.
@@ -174,7 +181,9 @@ Rebuilding matters: when a build already exists, `npm start` launches it without
 
 ## Project status
 
-**This project is finished and no longer supported.** The last public release is the final one: there is no roadmap, no support commitment, and public issues and pull requests are not answered. It stays online as a readable reference for what a small, transparent, local AI roleplaying client can look like.
+**This project is feature-complete and not supported.** There is no roadmap and no support commitment; public issues and pull requests are not answered. It stays online as a readable reference for what a small, transparent, local AI roleplaying client can look like, and maintenance releases are published when a change is actually worth sharing.
+
+**Version 1.4.0 is a belated release:** it publishes work that was finished earlier and left out of 1.3.0 — the Expand idea action, model details in Settings, refreshed narrator defaults and prompts. It is not a new stage of the project.
 
 The author stopped publishing it for two honest reasons: it never found an audience — it is used by its author alone, and public feedback stayed at zero — and it is ideologically complete, so what remains would be polish rather than design. Nothing here is abandoned mid-feature; the code, its tests, and this guide describe a working version.
 

@@ -151,6 +151,83 @@ function strings(value: unknown): string[] {
 	return out;
 }
 
+/** Numbers only; the catalog also carries a `diem` price we do not show. */
+function usdNumber(value: unknown): number | null {
+	if (!isPlainObject(value)) return null;
+	const price = value['usd'];
+	return typeof price === 'number' && Number.isFinite(price) ? price : null;
+}
+
+/** `pricing = { input: { usd }, output: { usd }, generation: { usd }, ... }` */
+function pricingOf(spec: Record<string, unknown>): Record<string, unknown> {
+	const pricing = spec['pricing'];
+	return isPlainObject(pricing) ? pricing : {};
+}
+
+function upscalePrice(pricing: Record<string, unknown>, factor: string): number | null {
+	const upscale = pricing['upscale'];
+	return isPlainObject(upscale) ? usdNumber(upscale[factor]) : null;
+}
+
+function isoString(value: unknown): string | null {
+	return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Price, privacy mode and the other facts a player needs to compare models.
+ * Venice reports them in the same free catalog answer, and the settings dialog
+ * shows them next to the picker (`$lib/modelInfo`); nothing extra is requested.
+ */
+function catalogMetadata(row: Record<string, unknown>, item: Record<string, unknown>): void {
+	const spec = isPlainObject(item['model_spec']) ? item['model_spec'] : {};
+	const pricing = pricingOf(spec);
+	const capabilities = capabilitiesOf(item);
+
+	const input = usdNumber(pricing['input']);
+	if (input !== null) row['price_input'] = input;
+	const output = usdNumber(pricing['output']);
+	if (output !== null) row['price_output'] = output;
+	const cacheInput = usdNumber(pricing['cache_input']);
+	if (cacheInput !== null) row['price_cache_input'] = cacheInput;
+	const generation = usdNumber(pricing['generation']);
+	if (generation !== null) row['price_generation'] = generation;
+	const upscale2x = upscalePrice(pricing, '2x');
+	if (upscale2x !== null) row['price_upscale_2x'] = upscale2x;
+
+	// `anonymized` hides the account from the provider; `private` keeps no content.
+	const privacy = isoString(spec['privacy']);
+	if (privacy) row['privacy'] = privacy;
+	if (spec['uncensored'] === true) row['uncensored'] = true;
+	if (spec['betaModel'] === true) row['beta'] = true;
+
+	const contextTokens = spec['availableContextTokens'];
+	if (typeof contextTokens === 'number' && Number.isFinite(contextTokens)) {
+		row['context_tokens'] = contextTokens;
+	}
+	const maxCompletion = spec['maxCompletionTokens'];
+	if (typeof maxCompletion === 'number' && Number.isFinite(maxCompletion)) {
+		row['max_completion_tokens'] = maxCompletion;
+	}
+
+	const deprecation = spec['deprecation'];
+	if (isPlainObject(deprecation)) {
+		const removesAt = isoString(deprecation['removesAt']) ?? isoString(deprecation['date']);
+		if (removesAt) row['deprecation_date'] = removesAt;
+	}
+
+	// TEE and E2EE exist for text models only; the flag alone does not mean this
+	// app can use the encrypted flow, so the dialog words it carefully.
+	if (row['supports_e2ee'] === undefined && capabilities['supportsE2EE'] === true) {
+		row['supports_e2ee'] = true;
+	}
+	if (
+		row['supports_tee_attestation'] === undefined &&
+		capabilities['supportsTeeAttestation'] === true
+	) {
+		row['supports_tee_attestation'] = true;
+	}
+}
+
 export function modelRows(payload: unknown, provider: ProviderName, kind: string): Record<string, unknown>[] {
 	const rows: Record<string, unknown>[] = [];
 	const seen = new Set<string>();
@@ -196,6 +273,7 @@ export function modelRows(payload: unknown, provider: ProviderName, kind: string
 			row['default_quality'] = String(constraints['defaultQuality'] || '');
 			row['prompt_character_limit'] = constraints['promptCharacterLimit'] ?? null;
 		}
+		catalogMetadata(row, item);
 		rows.push(row);
 		MODEL_CAPABILITIES.set(`${provider}|${kind}|${modelId}`, { ...row });
 	}

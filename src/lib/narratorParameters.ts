@@ -13,7 +13,8 @@ export type NarratorParameterValue = string | number | boolean | string[] | numb
 export type NarratorParameters = Record<string, NarratorParameterValue>;
 
 /** Narrator defaults; the only sampling fields the app sends on its own. */
-export const NARRATOR_TEMPERATURE = 0.75;
+export const NARRATOR_TEMPERATURE = 1;
+export const NARRATOR_TOP_P = 0.95;
 export const NARRATOR_MAX_COMPLETION_TOKENS = 8000;
 
 /** Upper bound on the dictionary, so one settings file cannot grow forever. */
@@ -29,6 +30,7 @@ const MAX_PARAMETER_ARRAY_ITEMS = 128;
 /** Sent on every narrator request and shown as editable rows in Settings. */
 export const DEFAULT_NARRATOR_PARAMETERS: NarratorParameters = {
 	temperature: NARRATOR_TEMPERATURE,
+	top_p: NARRATOR_TOP_P,
 	max_completion_tokens: NARRATOR_MAX_COMPLETION_TOKENS
 };
 

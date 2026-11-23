@@ -648,6 +648,27 @@ export class GamePageController {
 		}
 	}
 
+	/**
+	 * One explicit request that returns a full world description for the editor.
+	 * Returns null when the request could not run or failed; nothing is saved.
+	 */
+	async expandWorldIdea(idea: string): Promise<string | null> {
+		if (this.busy || !idea.trim()) return null;
+		const controller = this.beginAbortable('Expanding world idea…');
+		try {
+			const data = await api<{ text: string }>('/world/expand', {
+				method: 'POST', body: { text: idea }, signal: controller.signal, operationId: this.operationId
+			});
+			return data.text;
+		} catch (err) {
+			if (isAbortError(err)) toast('World expansion stopped', 'err');
+			else toast(`Could not expand the world idea: ${(err as Error).message}`, 'err');
+			return null;
+		} finally {
+			this.endAbortable(controller);
+		}
+	}
+
 	async openMedia(index: number): Promise<void> {
 		if (this.busy) return;
 		this.closeMedia();

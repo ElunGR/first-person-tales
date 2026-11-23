@@ -4,7 +4,7 @@
  * tests control the exact client instance.
  */
 import crypto from 'node:crypto';
-import { UTILITY_TEMPERATURE } from './config';
+import { CREATIVE_UTILITY_TEMPERATURE, UTILITY_TEMPERATURE, WORLD_EXPANSION_MAX_TOKENS } from './config';
 import { IndexError, ValueError } from './errors';
 import type { CompletionProvider } from './llm';
 import { newMessage, type MediaKind, type Message } from './models';
@@ -301,6 +301,35 @@ export async function improveText(text: string, llm: CompletionProvider, signal?
 			{ role: 'user', content: text }
 		],
 		{ parameters: { temperature: UTILITY_TEMPERATURE }, signal }
+	);
+	return raw.trim();
+}
+
+/**
+ * Turn a short world idea into a full description. Explicit and one-shot like
+ * the other utilities: the result is returned to the editor for review and is
+ * never written to prompts.local.yaml here.
+ */
+export async function expandWorldDescription(
+	idea: string,
+	llm: CompletionProvider,
+	signal?: AbortSignal
+): Promise<string> {
+	const raw = await llm.complete(
+		[
+			{ role: 'system', content: getPrompt('expand_world') },
+			{ role: 'user', content: idea }
+		],
+		{
+			// A full setting is long and reasoning tokens share this budget, so
+			// the cap carries generous headroom: a truncated response spends the
+			// paid request and returns nothing usable.
+			parameters: {
+				temperature: CREATIVE_UTILITY_TEMPERATURE,
+				max_completion_tokens: WORLD_EXPANSION_MAX_TOKENS
+			},
+			signal
+		}
 	);
 	return raw.trim();
 }

@@ -57,6 +57,7 @@ describe('narrator parameters reach the request', () => {
 		expect(provider.seen?.parameters).toEqual({
 			max_completion_tokens: 8000,
 			temperature: 1.05,
+			top_p: 0.95,
 			top_k: 40,
 			stop: ['###']
 		});
@@ -68,7 +69,7 @@ describe('narrator parameters reach the request', () => {
 			request: settingsRequest({ narrator_parameters: { temperature: 0.8 } })
 		} as never);
 		const published = (await response.json()) as { narrator_parameters: Record<string, unknown> };
-		const expected = { temperature: 0.8, max_completion_tokens: 8000 };
+		const expected = { temperature: 0.8, top_p: 0.95, max_completion_tokens: 8000 };
 		// The answer and the file agree, so the open form matches the next request.
 		expect(published.narrator_parameters).toEqual(expected);
 		resetSettingsStateForTests();
@@ -87,16 +88,17 @@ describe('narrator parameters reach the request', () => {
 		const provider = new RecordingProvider();
 		const session = new Session({ messages: [newMessage({ role: 'user', content: 'I wait.' })] });
 		await chat(session, 'I look around.', provider);
-		expect(provider.seen?.parameters).toEqual({ temperature: 0.5, max_completion_tokens: 8000 });
+		expect(provider.seen?.parameters).toEqual({ temperature: 0.5, top_p: 0.95, max_completion_tokens: 8000 });
 
 		// Regenerate asks for a fresh sample without touching the saved value.
 		const { regenerate } = await import('../src/lib/server/game');
 		const replyIndex = session.messages.length - 1;
 		await regenerate(session, replyIndex, provider, { temperature: 1.1 });
-		expect(provider.seen?.parameters).toEqual({ temperature: 1.1, max_completion_tokens: 8000 });
+		expect(provider.seen?.parameters).toEqual({ temperature: 1.1, top_p: 0.95, max_completion_tokens: 8000 });
 		// The saved value is untouched by the temporary regenerate override.
 		expect(loadSettings().narrator_parameters).toEqual({
 			temperature: 0.5,
+			top_p: 0.95,
 			max_completion_tokens: 8000
 		});
 	});
@@ -140,6 +142,7 @@ describe('settings form output', () => {
 		expect(provider.seen?.parameters).toEqual({
 			max_completion_tokens: 8000,
 			temperature: 0.95,
+			top_p: 0.95,
 			top_k: 40,
 			stop: ['###'],
 			ignore_eos: true,
@@ -169,6 +172,7 @@ describe('a hand-edited settings file', () => {
 		await chat(new Session({ messages: [] }), 'I look around.', provider);
 		expect(provider.seen?.parameters).toEqual({
 			temperature: 1.2,
+			top_p: 0.95,
 			max_completion_tokens: 8000,
 			top_k: 40
 		});

@@ -25,11 +25,26 @@ export interface StatePayload {
 	recovery_message: string | null;
 }
 
+/** One model as the server sends it: identity, geometry, and catalog metadata. */
 export interface ModelRow {
 	id: string;
 	name: string;
 	resolutions?: string[];
 	aspect_ratios?: string[];
+	// Catalog facts shown next to the picker; parsed in `$lib/modelInfo`.
+	price_input?: number;
+	price_output?: number;
+	price_cache_input?: number;
+	price_generation?: number;
+	price_upscale_2x?: number;
+	privacy?: string;
+	uncensored?: boolean;
+	beta?: boolean;
+	context_tokens?: number;
+	max_completion_tokens?: number;
+	deprecation_date?: string;
+	supports_e2ee?: boolean;
+	supports_tee_attestation?: boolean;
 	[key: string]: unknown;
 }
 

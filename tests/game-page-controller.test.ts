@@ -367,7 +367,8 @@ describe('GamePageController game import and export', () => {
 				() => controller.undoSummary(), () => controller.newGame(),
 				() => controller.prepareMedia('Old scene'), () => controller.generateMedia('Old prompt'),
 				() => controller.deleteMedia('old-image'), () => controller.saveCharacter('Old hero'),
-				() => controller.saveWorld('Old world'), () => controller.saveSettings(values),
+				() => controller.saveWorld('Old world'), () => controller.expandWorldIdea('Old idea'),
+				() => controller.saveSettings(values),
 				() => controller.refreshModels(values), () => controller.openMedia(0),
 				() => controller.openSettings(), () => controller.openCharacter(),
 				() => controller.openWorld(), () => controller.importHistory(file),
@@ -1128,6 +1129,7 @@ describe('GamePageController state responses', () => {
 	it.each([
 		['translateMessage', (c: GamePageController) => c.translateMessage(0)],
 		['prepareMedia', (c: GamePageController) => c.prepareMedia('a glowing stone')],
+		['expandWorldIdea', (c: GamePageController) => c.expandWorldIdea('a glowing stone')],
 		['generateMedia', (c: GamePageController) => c.generateMedia('a glowing stone')]
 	])('%s starts no second paid request while one is running', async (_name, invoke) => {
 		const pending: Array<(value: Response) => void> = [];
@@ -1174,5 +1176,52 @@ describe('GamePageController state responses', () => {
 			'Undo this summary and delete 2 messages written after it?'
 		);
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+describe('GamePageController world expansion', () => {
+	it('sends the idea as one request and returns the draft without saving it', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(response({ text: 'Expanded world' }));
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+
+		const text = await controller.expandWorldIdea('noir city');
+
+		expect(text).toBe('Expanded world');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(fetchMock.mock.calls[0][0]).toBe('/world/expand');
+		expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ text: 'noir city' });
+		// The editor text is the caller's; only an explicit save writes it.
+		expect(controller.worldOpen).toBe(false);
+		expect(controller.busy).toBe(false);
+		expect(controller.statusText).toBe('Ready');
+	});
+
+	it('spends no request on an empty idea', async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal('fetch', fetchMock);
+		const controller = new GamePageController();
+
+		expect(await controller.expandWorldIdea('   ')).toBeNull();
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(controller.busy).toBe(false);
+	});
+
+	it('returns null and reports a failed request without leaving the app busy', async () => {
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+			JSON.stringify({ detail: 'text provider rejected the request (HTTP 401)' }),
+			{ status: 502, headers: { 'Content-Type': 'application/json' } }
+		)));
+		const controller = new GamePageController();
+
+		expect(await controller.expandWorldIdea('idea')).toBeNull();
+
+		expect(controller.busy).toBe(false);
+		expect(controller.showStop).toBe(false);
+		expect(toastState.visible).toBe(true);
+		expect(toastState.message).toBe(
+			'Could not expand the world idea: text provider rejected the request (HTTP 401)'
+		);
 	});
 });
